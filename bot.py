@@ -47,14 +47,14 @@ def generate_article(keyword):
     return response.text.replace("```html", "").replace("```", "").strip()
 
 def save_html_page(keyword, article_html):
-    """Tworzy plik HTML dla danego wpisu ze zdjęciem oraz aktualizuje stronę główną."""
+    """Tworzy plik HTML dla danego wpisu ze zdjęciem tematycznym oraz aktualizuje stronę główną."""
     slug = keyword.lower().replace(" ", "-").replace("/", "-")
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     filename = f"{slug}.html"
     
-    # Generowanie stabilnego zdjęcia nagłówkowego
-    seed = abs(hash(keyword)) % 1000
-    image_url = f"https://picsum.photos/seed/{seed}/800/400"
+    # Generowanie darmowego zdjęcia dopasowanego do słowa kluczowego (LoremFlickr po słowach kluczowych)
+    encoded_keyword = urllib.parse.quote(keyword)
+    image_url = f"https://loremflickr.com/800/400/{encoded_keyword}"
     
     full_html = f"""<!DOCTYPE html>
 <html lang="pl">
@@ -75,7 +75,7 @@ def save_html_page(keyword, article_html):
 <body>
     <header><a href="index.html">Co w Sieci</a></header>
     <div class="meta">Opublikowano: {date_str}</div>
-    <img src="{image_url}" alt="{keyword}" class="featured-image">
+    <img src="{image_url}" alt="{keyword}" class="featured-image" onerror="this.style.display='none'">
     <main>{article_html}</main>
     <footer>&copy; {datetime.datetime.now().year} Co w Sieci</footer>
 </body>
