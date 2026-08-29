@@ -3,7 +3,7 @@ import datetime
 import feedparser
 from google import genai
 
-# Pobranie klucza z bezpiecznych ustawień
+# Pobranie klucza API z ustawień repozytorium GitHub
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -20,18 +20,24 @@ def get_top_trend():
         raise Exception("Nie udało się pobrać trendów z kanału RSS.")
 
 def generate_article(keyword):
-    """Generuje artykuł HTML za pomocą nowej biblioteki Google GenAI SDK."""
+    """Generuje wartościowy artykuł informacyjny na dany temat."""
     prompt = f"""
-    Jesteś dziennikarzem serwisu informacyjnego 'coWsieci'. 
-    Napisz artykuł na temat zyskującego trendu w Polsce: '{keyword}'.
+    Jesteś profesjonalnym dziennikarzem serwisu informacyjnego 'coWsieci'. 
+    Twój cel: Napisać wartościowy, rzetelny artykuł informacyjny na temat: '{keyword}'.
     
+    ZASADY TREŚCI:
+    1. Skup się wyłącznie na temacie '{keyword}' – kim/czym jest, co się wokół tego dzieje, jaka jest historia lub najważniejsze fakty na ten temat.
+    2. BEZWZGLĘDNY ZAKAZ: Nie pisz o "popularności w Google", "skokach w wyszukiwarkach", "trendach" ani o tym, że ludzie tego szukają. Użytkownik chce poznać odpowiedzi i fakty dotyczące samego hasła!
+    3. Artykuł ma dać wyczerpującą i szybką odpowiedź czytelnikowi, który szuka informacji na ten temat.
+
+    STRUKTURA HTML:
     Zwróć wyłącznie sam czysty kod HTML (bez znaczników ```html i ```), zawierający:
-    - Nagłówek h1 z chwytliwym tytułem
-    - Krótkie wprowadzenie (dlaczego ludzie tego dzisiaj szukają)
-    - 2-3 sekcje z nagłówkami h2 objaśniające temat
-    - Sekcję FAQ (3 pytania i odpowiedzi)
+    - Nagłówek h1 z konkretnym, chwytliwym tytułem informacyjnym (np. "{keyword} – najważniejsze informacje, fakty i szczegóły")
+    - Krótkie wprowadzenie przedstawiające temat i najistotniejsze kwestie
+    - 2-3 sekcje z nagłówkami h2 szczegółowo opisujące dany temat
+    - Sekcję FAQ z nagłówkiem h2 i 3 konkretnymi pytaniami oraz odpowiedziami dotyczącymi hasła '{keyword}'
     
-    Styl: Zwięzły, rzetelny, zoptymalizowany pod SEO.
+    Styl: Rzetelny, dziennikarski, czytelny, zoptymalizowany pod SEO.
     """
     
     response = client.models.generate_content(
@@ -63,7 +69,7 @@ def save_html_page(keyword, article_html):
 </head>
 <body>
     <header><a href="index.html">coWsieci</a></header>
-    <div class="meta">Opublikowano: {date_str} | Trend: {keyword}</div>
+    <div class="meta">Opublikowano: {date_str} | Temat: {keyword}</div>
     <main>{article_html}</main>
     <footer>&copy; {datetime.datetime.now().year} coWsieci - Automatyczny Serwis Informacyjny</footer>
 </body>
@@ -84,7 +90,7 @@ def update_index(keyword, filename, date_str):
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>coWsieci - Najnowsze Trendy</title>
+    <title>coWsieci - Najważniejsze Tematy</title>
     <style>
         body {{ font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
         ul {{ list-style-type: none; padding: 0; }}
@@ -92,7 +98,7 @@ def update_index(keyword, filename, date_str):
     </style>
 </head>
 <body>
-    <h1>coWsieci - Aktualne Trendy</h1>
+    <h1>coWsieci - Aktualne Tematy</h1>
     <ul id="trends-list">
     {entry}
     </ul>
@@ -110,7 +116,7 @@ def update_index(keyword, filename, date_str):
 
 if __name__ == "__main__":
     trend = get_top_trend()
-    print(f"Pobrano trend: {trend}")
+    print(f"Pobrano temat: {trend}")
     content = generate_article(trend)
     save_html_page(trend, content)
     print("Strona wygenerowana pomyślnie.")
