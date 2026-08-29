@@ -1,4 +1,5 @@
 import os
+import re
 import datetime
 import urllib.parse
 import feedparser
@@ -8,8 +9,25 @@ from google import genai
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ADRES TWOJEJ STRONY (Pamiętaj o podmienie domeny, gdy kupisz własną!)
-BASE_URL = "https://twoj-nick.github.io/coWsieci"
+# Automatyczne ustalenie adresu strony na GitHub Pages
+GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "user/repo")
+if "/" in GITHUB_REPO:
+    repo_owner, repo_name = GITHUB_REPO.split("/")
+    BASE_URL = f"https://{repo_owner}.github.io/{repo_name}"
+else:
+    BASE_URL = "https://localhost"
+
+def slugify(text):
+    """Tworzy bezpieczną dla adresów URL i plików nazwę z dowolnego ciągu znaków."""
+    text = text.lower()
+    # Podmiana polskich znaków
+    pl_map = {'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z'}
+    for pl_char, latin_char in pl_map.items():
+        text = text.replace(pl_char, latin_char)
+    # Zostawiamy tylko litery, cyfry i spacje, a potem zamieniamy spacje na myślniki
+    text = re.sub(r'[^a-z0-9\s-]', '', text)
+    text = re.sub(r'[\s-]+', '-', text).strip('-')
+    return text or "article"
 
 def get_top_trend():
     """Pobiera najbardziej zyskujące słowo z oficjalnego kanału RSS Google Trends dla Polski."""
@@ -51,12 +69,16 @@ def generate_article(keyword):
 
 def save_html_page(keyword, article_html):
     """Tworzy plik HTML dla danego wpisu ze zdjęciem tematycznym oraz aktualizuje stronę główną i sitemap.xml."""
-    slug = keyword.lower().replace(" ", "-").replace("/", "-")
+    slug = slugify(keyword)
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     filename = f"{slug}.html"
     
-    # Generowanie darmowego zdjęcia dopasowanego do słowa kluczowego (LoremFlickr)
-    encoded_keyword = urllib.parse.quote(keyword)
+    # Oczyszczenie słowa kluczowego do wyszukiwania grafiki (usunięcie znaków specjalnych)
+    clean_keyword_for_img = re.sub(r'[^a-zA-Z0-9\s]', '', keyword).strip()
+    if not clean_keyword_for_img:
+        clean_keyword_for_img = "news"
+    encoded_keyword = urllib.parse.quote(clean_keyword_for_img)
+    
     image_url = f"https://loremflickr.com/800/400/{encoded_keyword}"
     
     full_html = f"""<!DOCTYPE html>
@@ -91,7 +113,7 @@ def save_html_page(keyword, article_html):
     update_sitemap(filename, date_str)
 
 def update_index(keyword, filename, date_str):
-    """Dodaje link do nowej strony na stronie głównej index.html."""
+    """Dodaje link do nowej strony na stronie głównej index.html bez powielania wpisów."""
     entry = f'<li><span>{date_str}</span> - <a href="{filename}">{keyword}</a></li>\n'
     
     index_file = "index.html"
@@ -127,12 +149,14 @@ def update_index(keyword, filename, date_str):
         with open(index_file, "r", encoding="utf-8") as f:
             content = f.read()
         
-        updated_content = content.replace('<ul id="trends-list">', f'<ul id="trends-list">\n    {entry}')
-        with open(index_file, "w", encoding="utf-8") as f:
-            f.write(updated_content)
+        # Zabezpieczenie przed duplikowaniem wpisu na stronie głównej
+        if f'href="{filename}"' not in content:
+            updated_content = content.replace('<ul id="trends-list">', f'<ul id="trends-list">\n    {entry}')
+            with open(index_file, "w", encoding="utf-8") as f:
+                f.write(updated_content)
 
 def update_sitemap(filename, date_str):
-    """Tworzy lub aktualizuje plik sitemap.xml dla robotów Google."""
+    """Tworzy lub aktualizuje plik sitemap.xml dla robotów Google bez powielania wpisów."""
     sitemap_file = "sitemap.xml"
     new_url_entry = f"""  <url>
     <loc>{BASE_URL}/{filename}</loc>
@@ -158,7 +182,7 @@ def update_sitemap(filename, date_str):
         with open(sitemap_file, "r", encoding="utf-8") as f:
             content = f.read()
         
-        # Jeśli strona nie została jeszcze dodana do mapy
+        # Zabezpieczenie przed duplikowaniem wpisu w sitemap.xml
         if f"{BASE_URL}/{filename}" not in content:
             updated_content = content.replace('</urlset>', f'{new_url_entry}\n</urlset>')
             with open(sitemap_file, "w", encoding="utf-8") as f:
@@ -169,4 +193,4 @@ if __name__ == "__main__":
     print(f"Pobrano temat: {trend}")
     content = generate_article(trend)
     save_html_page(trend, content)
-    print("Strona oraz plik sitemap.xml wygenerowane pomyślnie.")
+    print("Strona, index.html oraz sitemap.xml zostały zaktualizowane pomyślnie.")
