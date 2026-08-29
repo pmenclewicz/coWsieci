@@ -62,8 +62,8 @@ def get_top_trend_data():
         
     raise Exception("Nie udało się pobrać aktualnego trendu z kanału RSS Google Trends.")
 
-def generate_article(keyword, context_data):
-    """Generuje artykuł zoptymalizowany pod intencję wyszukiwania użytkownika (SEO)."""
+def generate_article_and_image_tags(keyword, context_data):
+    """Generuje treść artykułu oraz precyzyjne angielskie tagi do dobierania zdjęć."""
     prompt = f"""
     Jesteś profesjonalnym dziennikarzem i ekspertem SEO serwisu informacyjnego 'Co w Sieci'.
     
@@ -71,43 +71,54 @@ def generate_article(keyword, context_data):
     {context_data}
     
     TWOJE ZADANIE:
-    Napisz wartościowy artykuł zoptymalizowany pod kątem tego, czego dokładnie ludzie szukają w Google w tym momencie.
+    1. Napisz artykuł zoptymalizowany pod kątem tego, czego dokładnie ludzie szukają w Google w tym momencie.
+    2. Na samym końcu odpowiedzi wygeneruj linię tekstową z 2-3 angielskimi słowami kluczowymi (po przecinku), które idealnie opisują ten temat na potrzeby wyszukiwarki zdjęć (np. dla meczu piłkarskiego: soccer,stadium; dla polityki: politics,government).
     
-    ZASADY CELOWANIA W SŁOWA KLUCZOWE I INTENCJĘ:
-    1. Przeanalizuj kontekst wydarzenia z danych wejściowych i odpowiedz bezpośrednio na pytania czytelników (Co się stało? Kto brał w tym udział? Jakie są skutki lub wyniki?).
-    2. Tytuł (H1) musi zawierać główną frazę i precyzyjnie opisywać kontekst (np. zamiast "Polska" napisz "Mecz Polska vs Hiszpania: Wynik i Podsumowanie Starcia").
-    3. W treści i nagłówkach H2 używaj naturalnych fraz długiego ogona (long-tail keywords), które wpisują użytkownicy w wyszukiwarkę.
-    4. ZAKAZ: Nie pisz o "popularności w Google", "trendach" ani o tym, że temat jest szukany w sieci.
-    
-    STRUKTURA HTML:
-    Zwróć wyłącznie sam czysty kod HTML (bez znaczników ```html i ```), zawierający:
+    STRUKTURA WYJŚCIOWA:
+    Zwróć treść w formacie:
+    ---ARTICLE---
+    [czysty kod HTML artykułu: h1, intro, h2, faq]
+    ---TAGS---
+    [angielskie słowa kluczowe oddzielone przecinkami, bez spacji, np. stadium,soccer]
+
+    ZASADY ARTYKUŁU HTML:
     - Nagłówek h1 (chwytliwy, zoptymalizowany pod wyszukiwania)
     - Wprowadzenie z podsumowaniem najważniejszego faktu na samym początku
-    - 2-3 sekcje z nagłówkami h2 opisujące szczegóły, tło oraz opnie/konsekwencje
-    - Sekcję FAQ z nagłówkiem h2 i 3 konkretnymi pytaniami oraz odpowiedziami, które najczęściej zadają internauci.
-    
-    Styl: Rzetelny, czytelny, zoptymalizowany pod SEO i intencję wyszukiwania.
+    - 2-3 sekcje z nagłówkami h2 opisujące szczegóły
+    - Sekcja FAQ z nagłówkiem h2 i 3 konkretnymi pytaniami i odpowiedziami
+    - ZAKAZ: Nie pisz o "popularności w Google" ani o "trendach".
     """
     
     response = client.models.generate_content(
         model='gemini-3.6-flash',
         contents=prompt,
     )
-    return response.text.replace("```html", "").replace("```", "").strip()
+    
+    raw_text = response.text.replace("```html", "").replace("```", "").strip()
+    
+    article_html = raw_text
+    image_tags = "news,technology"
+    
+    if "---ARTICLE---" in raw_text and "---TAGS---" in raw_text:
+        parts = raw_text.split("---TAGS---")
+        article_html = parts[0].replace("---ARTICLE---", "").strip()
+        image_tags = parts[1].strip().lower().replace(" ", "")
+    
+    return article_html, image_tags
 
-def save_html_page(keyword, article_html):
-    """Tworzy plik HTML dla danego wpisu ze zdjęciem tematycznym oraz aktualizuje stronę główną i sitemap.xml."""
+def save_html_page(keyword, article_html, image_tags):
+    """Tworzy plik HTML ze zdjęciem zmieniającym się przy każdym odświeżeniu, ale zoptymalizowanym pod kątem kategorii."""
     slug = slugify(keyword)
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     filename = f"{slug}.html"
     
-    # Oczyszczenie słowa kluczowego do wyszukiwania grafiki
-    clean_keyword_for_img = re.sub(r'[^a-zA-Z0-9\s]', '', keyword).strip()
-    if not clean_keyword_for_img:
-        clean_keyword_for_img = "news"
-    encoded_keyword = urllib.parse.quote(clean_keyword_for_img)
-    
-    image_url = f"https://loremflickr.com/800/400/{encoded_keyword}"
+    # Czyszczenie tagów ze znaków niedozwolonych
+    clean_tags = re.sub(r'[^a-zA-Z0-9,]', '', image_tags).strip(',')
+    if not clean_tags:
+        clean_tags = "news"
+        
+    # Tworzenie dynamicznego linku z wieloma dopasowanymi tagami po angielsku
+    image_url = f"https://loremflickr.com/800/400/{clean_tags}"
     
     full_html = f"""<!DOCTYPE html>
 <html lang="pl">
@@ -219,6 +230,7 @@ def update_sitemap(filename, date_str):
 if __name__ == "__main__":
     keyword, context_data = get_top_trend_data()
     print(f"Pobrano temat: {keyword}")
-    content = generate_article(keyword, context_data)
-    save_html_page(keyword, content)
+    article_html, image_tags = generate_article_and_image_tags(keyword, context_data)
+    print(f"Dopasowane tagi do obrazka: {image_tags}")
+    save_html_page(keyword, article_html, image_tags)
     print("Strona, index.html oraz sitemap.xml zostały zaktualizowane pomyślnie.")
