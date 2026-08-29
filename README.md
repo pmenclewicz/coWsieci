@@ -1,0 +1,1 @@
+# coWsieci - Bot do trendów
