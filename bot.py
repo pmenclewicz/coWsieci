@@ -2,7 +2,8 @@ import os
 import re
 import datetime
 import urllib.parse
-import feedparser
+import urllib.request
+import xml.etree.ElementTree as ET
 from google import genai
 
 # Pobranie klucza API z ustawień repozytorium GitHub
@@ -30,15 +31,25 @@ def slugify(text):
     return text or "article"
 
 def get_top_trend():
-    """Pobiera najbardziej zyskujące słowo z oficjalnego kanału RSS Google Trends dla Polski."""
-    feed_url = "https://trends.google.pl/trending/rss?geo=PL"
-    feed = feedparser.parse(feed_url)
+    """Pobiera najbardziej zyskujące słowo z oficjalnego kanału RSS Google Trends z nagłówkami przeglądarki."""
+    url = "https://trends.google.pl/trending/rss?geo=PL"
+    req = urllib.request.Request(
+        url, 
+        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'}
+    )
     
-    if feed.entries:
-        top_keyword = feed.entries[0].title
-        return top_keyword
-    else:
-        raise Exception("Nie udało się pobrać trendów z kanału RSS.")
+    try:
+        with urllib.request.urlopen(req) as response:
+            xml_data = response.read()
+            root = ET.fromstring(xml_data)
+            # Pobieramy pierwszy tytuł wpisu z kanału RSS
+            item = root.find('.//item/title')
+            if item is not None and item.text:
+                return item.text.strip()
+    except Exception as e:
+        print(f"Błąd podczas pobierania bezpośredniego Google Trends: {e}")
+        
+    raise Exception("Nie udało się pobrać aktualnego trendu z kanału RSS Google Trends.")
 
 def generate_article(keyword):
     """Generuje wartościowy artykuł informacyjny na dany temat."""
