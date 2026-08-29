@@ -1,23 +1,26 @@
 import os
 import datetime
-from pytrends.request import TrendReq
-import google.generativeai as genai
+import feedparser
+from google import genai
 
 # Pobranie klucza z bezpiecznych ustawień
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 def get_top_trend():
-    """Pobiera najbardziej zyskujące słowo z Google Trends dla Polski."""
-    pytrends = TrendReq(hl='pl-PL', tz=120)
-    trending_searches = pytrends.trending_searches(pn='poland')
-    top_keyword = trending_searches.iloc[0, 0]
-    return top_keyword
+    """Pobiera najbardziej zyskujące słowo z oficjalnego kanału RSS Google Trends dla Polski."""
+    feed_url = "https://trends.google.pl/trending/rss?geo=PL"
+    feed = feedparser.parse(feed_url)
+    
+    if feed.entries:
+        # Pobiera tytuł pierwszego najpopularniejszego trendu
+        top_keyword = feed.entries[0].title
+        return top_keyword
+    else:
+        raise Exception("Nie udało się pobrać trendów z kanału RSS.")
 
 def generate_article(keyword):
-    """Generuje artykuł HTML za pomocą Gemini AI."""
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    
+    """Generuje artykuł HTML za pomocą nowej biblioteki Google GenAI SDK."""
     prompt = f"""
     Jesteś dziennikarzem serwisu informacyjnego 'coWsieci'. 
     Napisz artykuł na temat zyskującego trendu w Polsce: '{keyword}'.
@@ -31,12 +34,15 @@ def generate_article(keyword):
     Styl: Zwięzły, rzetelny, zoptymalizowany pod SEO.
     """
     
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt,
+    )
     return response.text.replace("```html", "").replace("```", "").strip()
 
 def save_html_page(keyword, article_html):
     """Tworzy plik HTML dla danego wpisu i aktualizuje stronę główną."""
-    slug = keyword.lower().replace(" ", "-")
+    slug = keyword.lower().replace(" ", "-").replace("/", "-")
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     filename = f"{slug}.html"
     
