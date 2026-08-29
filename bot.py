@@ -30,8 +30,8 @@ def slugify(text):
     text = re.sub(r'[\s-]+', '-', text).strip('-')
     return text or "article"
 
-def get_top_trend():
-    """Pobiera najbardziej zyskujące słowo z oficjalnego kanału RSS Google Trends z nagłówkami przeglądarki."""
+def get_top_trend_data():
+    """Pobiera nie tylko nagłówek, ale i opis oraz artykuły powiązane z trendem z Google Trends."""
     url = "https://trends.google.pl/trending/rss?geo=PL"
     req = urllib.request.Request(
         url, 
@@ -42,34 +42,51 @@ def get_top_trend():
         with urllib.request.urlopen(req) as response:
             xml_data = response.read()
             root = ET.fromstring(xml_data)
-            # Pobieramy pierwszy tytuł wpisu z kanału RSS
-            item = root.find('.//item/title')
-            if item is not None and item.text:
-                return item.text.strip()
+            
+            first_item = root.find('.//item')
+            if first_item is not None:
+                title = first_item.find('title').text if first_item.find('title') is not None else ""
+                description = first_item.find('description').text if first_item.find('description') is not None else ""
+                
+                # Pobieramy wiadomości prasowe powiązane z tym trendem (jeśli są w RSS)
+                news_titles = []
+                for news in first_item.findall('.//{https://trends.google.com/trending/rss}news_item'):
+                    news_title = news.find('{https://trends.google.com/trending/rss}news_item_title')
+                    if news_title is not None and news_title.text:
+                        news_titles.append(news_title.text)
+                
+                context_str = f"Słowo kluczowe: {title}\nOpis sytuacji: {description}\nNagłówki wiadomości: {', '.join(news_titles)}"
+                return title.strip(), context_str
     except Exception as e:
-        print(f"Błąd podczas pobierania bezpośredniego Google Trends: {e}")
+        print(f"Błąd podczas pobierania danych z Google Trends: {e}")
         
     raise Exception("Nie udało się pobrać aktualnego trendu z kanału RSS Google Trends.")
 
-def generate_article(keyword):
-    """Generuje wartościowy artykuł informacyjny na dany temat."""
+def generate_article(keyword, context_data):
+    """Generuje artykuł zoptymalizowany pod intencję wyszukiwania użytkownika (SEO)."""
     prompt = f"""
-    Jesteś profesjonalnym dziennikarzem serwisu informacyjnego 'Co w Sieci'. 
-    Twój cel: Napisać wartościowy, rzetelny artykuł informacyjny na temat: '{keyword}'.
+    Jesteś profesjonalnym dziennikarzem i ekspertem SEO serwisu informacyjnego 'Co w Sieci'.
     
-    ZASADY TREŚCI:
-    1. Skup się wyłącznie na temacie '{keyword}' – kim/czym jest, co się wokół tego dzieje, jaka jest historia lub najważniejsze fakty na ten temat.
-    2. BEZWZGLĘDNY ZAKAZ: Nie pisz o "popularności w Google", "skokach w wyszukiwarkach", "trendach" ani o tym, że ludzie tego szukają. Użytkownik chce poznać odpowiedzi i fakty dotyczące samego hasła!
-    3. Artykuł ma dać wyczerpującą i szybką odpowiedź czytelnikowi, który szuka informacji na ten temat.
-
+    DANE WEJŚCIOWE Z GOOGLE TRENDS:
+    {context_data}
+    
+    TWOJE ZADANIE:
+    Napisz wartościowy artykuł zoptymalizowany pod kątem tego, czego dokładnie ludzie szukają w Google w tym momencie.
+    
+    ZASADY CELOWANIA W SŁOWA KLUCZOWE I INTENCJĘ:
+    1. Przeanalizuj kontekst wydarzenia z danych wejściowych i odpowiedz bezpośrednio na pytania czytelników (Co się stało? Kto brał w tym udział? Jakie są skutki lub wyniki?).
+    2. Tytuł (H1) musi zawierać główną frazę i precyzyjnie opisywać kontekst (np. zamiast "Polska" napisz "Mecz Polska vs Hiszpania: Wynik i Podsumowanie Starcia").
+    3. W treści i nagłówkach H2 używaj naturalnych fraz długiego ogona (long-tail keywords), które wpisują użytkownicy w wyszukiwarkę.
+    4. ZAKAZ: Nie pisz o "popularności w Google", "trendach" ani o tym, że temat jest szukany w sieci.
+    
     STRUKTURA HTML:
     Zwróć wyłącznie sam czysty kod HTML (bez znaczników ```html i ```), zawierający:
-    - Nagłówek h1 z konkretnym, chwytliwym tytułem informacyjnym
-    - Krótkie wprowadzenie przedstawiające temat i najistotniejsze kwestie
-    - 2-3 sekcje z nagłówkami h2 szczegółowo opisujące dany temat
-    - Sekcję FAQ z nagłówkiem h2 i 3 konkretnymi pytaniami oraz odpowiedziami dotyczącymi hasła '{keyword}'
+    - Nagłówek h1 (chwytliwy, zoptymalizowany pod wyszukiwania)
+    - Wprowadzenie z podsumowaniem najważniejszego faktu na samym początku
+    - 2-3 sekcje z nagłówkami h2 opisujące szczegóły, tło oraz opnie/konsekwencje
+    - Sekcję FAQ z nagłówkiem h2 i 3 konkretnymi pytaniami oraz odpowiedziami, które najczęściej zadają internauci.
     
-    Styl: Rzetelny, dziennikarski, czytelny, zoptymalizowany pod SEO.
+    Styl: Rzetelny, czytelny, zoptymalizowany pod SEO i intencję wyszukiwania.
     """
     
     response = client.models.generate_content(
@@ -84,7 +101,7 @@ def save_html_page(keyword, article_html):
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     filename = f"{slug}.html"
     
-    # Oczyszczenie słowa kluczowego do wyszukiwania grafiki (usunięcie znaków specjalnych)
+    # Oczyszczenie słowa kluczowego do wyszukiwania grafiki
     clean_keyword_for_img = re.sub(r'[^a-zA-Z0-9\s]', '', keyword).strip()
     if not clean_keyword_for_img:
         clean_keyword_for_img = "news"
@@ -200,8 +217,8 @@ def update_sitemap(filename, date_str):
                 f.write(updated_content)
 
 if __name__ == "__main__":
-    trend = get_top_trend()
-    print(f"Pobrano temat: {trend}")
-    content = generate_article(trend)
-    save_html_page(trend, content)
+    keyword, context_data = get_top_trend_data()
+    print(f"Pobrano temat: {keyword}")
+    content = generate_article(keyword, context_data)
+    save_html_page(keyword, content)
     print("Strona, index.html oraz sitemap.xml zostały zaktualizowane pomyślnie.")
