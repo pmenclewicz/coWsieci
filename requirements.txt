@@ -1,3 +1,2 @@
-pytrends
-google-generativeai
-pandas
+google-genai
+feedparser
