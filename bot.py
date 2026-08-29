@@ -8,6 +8,9 @@ from google import genai
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
+# ADRES TWOJEJ STRONY (Pamiętaj o podmienie domeny, gdy kupisz własną!)
+BASE_URL = "https://twoj-nick.github.io/coWsieci"
+
 def get_top_trend():
     """Pobiera najbardziej zyskujące słowo z oficjalnego kanału RSS Google Trends dla Polski."""
     feed_url = "https://trends.google.pl/trending/rss?geo=PL"
@@ -47,12 +50,12 @@ def generate_article(keyword):
     return response.text.replace("```html", "").replace("```", "").strip()
 
 def save_html_page(keyword, article_html):
-    """Tworzy plik HTML dla danego wpisu ze zdjęciem tematycznym oraz aktualizuje stronę główną."""
+    """Tworzy plik HTML dla danego wpisu ze zdjęciem tematycznym oraz aktualizuje stronę główną i sitemap.xml."""
     slug = keyword.lower().replace(" ", "-").replace("/", "-")
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     filename = f"{slug}.html"
     
-    # Generowanie darmowego zdjęcia dopasowanego do słowa kluczowego (LoremFlickr po słowach kluczowych)
+    # Generowanie darmowego zdjęcia dopasowanego do słowa kluczowego (LoremFlickr)
     encoded_keyword = urllib.parse.quote(keyword)
     image_url = f"https://loremflickr.com/800/400/{encoded_keyword}"
     
@@ -85,6 +88,7 @@ def save_html_page(keyword, article_html):
         f.write(full_html)
     
     update_index(keyword, filename, date_str)
+    update_sitemap(filename, date_str)
 
 def update_index(keyword, filename, date_str):
     """Dodaje link do nowej strony na stronie głównej index.html."""
@@ -127,9 +131,42 @@ def update_index(keyword, filename, date_str):
         with open(index_file, "w", encoding="utf-8") as f:
             f.write(updated_content)
 
+def update_sitemap(filename, date_str):
+    """Tworzy lub aktualizuje plik sitemap.xml dla robotów Google."""
+    sitemap_file = "sitemap.xml"
+    new_url_entry = f"""  <url>
+    <loc>{BASE_URL}/{filename}</loc>
+    <lastmod>{date_str}</lastmod>
+    <changefreq>never</changefreq>
+    <priority>0.8</priority>
+  </url>"""
+
+    if not os.path.exists(sitemap_file):
+        sitemap_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>{BASE_URL}/index.html</loc>
+    <lastmod>{date_str}</lastmod>
+    <changefreq>always</changefreq>
+    <priority>1.0</priority>
+  </url>
+{new_url_entry}
+</urlset>"""
+        with open(sitemap_file, "w", encoding="utf-8") as f:
+            f.write(sitemap_content)
+    else:
+        with open(sitemap_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        # Jeśli strona nie została jeszcze dodana do mapy
+        if f"{BASE_URL}/{filename}" not in content:
+            updated_content = content.replace('</urlset>', f'{new_url_entry}\n</urlset>')
+            with open(sitemap_file, "w", encoding="utf-8") as f:
+                f.write(updated_content)
+
 if __name__ == "__main__":
     trend = get_top_trend()
     print(f"Pobrano temat: {trend}")
     content = generate_article(trend)
     save_html_page(trend, content)
-    print("Strona wygenerowana pomyślnie.")
+    print("Strona oraz plik sitemap.xml wygenerowane pomyślnie.")
