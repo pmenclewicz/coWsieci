@@ -52,9 +52,9 @@ def save_html_page(keyword, article_html):
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     filename = f"{slug}.html"
     
-    # Generowanie bezpiecznego, darmowego zdjęcia tematycznego z Unsplash (na wolnej licencji)
-    encoded_keyword = urllib.parse.quote(keyword)
-    image_url = f"https://source.unsplash.com/800x450/?{encoded_keyword}"
+    # Generowanie stabilnego zdjęcia nagłówkowego
+    seed = abs(hash(keyword)) % 1000
+    image_url = f"https://picsum.photos/seed/{seed}/800/400"
     
     full_html = f"""<!DOCTYPE html>
 <html lang="pl">
@@ -75,7 +75,7 @@ def save_html_page(keyword, article_html):
 <body>
     <header><a href="index.html">Co w Sieci</a></header>
     <div class="meta">Opublikowano: {date_str}</div>
-    <img src="{image_url}" alt="{keyword}" class="featured-image" onerror="this.style.display='none'">
+    <img src="{image_url}" alt="{keyword}" class="featured-image">
     <main>{article_html}</main>
     <footer>&copy; {datetime.datetime.now().year} Co w Sieci</footer>
 </body>
