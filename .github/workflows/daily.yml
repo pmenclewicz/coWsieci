@@ -3,7 +3,7 @@ name: Automatic Trend Publisher
 on:
   schedule:
     - cron: '0 8 * * *'  # Uruchamia się codziennie o 8:00 rano
-  workflow_dispatch:      # Pozwala uruchomić bota ręcznie w dowolnym momencie
+  workflow_dispatch:      # Pozwala uruchomić bota ręcznie
 
 jobs:
   build-and-publish:
@@ -12,10 +12,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
