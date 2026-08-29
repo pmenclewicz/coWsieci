@@ -1,5 +1,6 @@
 import os
 import datetime
+import urllib.parse
 import feedparser
 from google import genai
 
@@ -13,7 +14,6 @@ def get_top_trend():
     feed = feedparser.parse(feed_url)
     
     if feed.entries:
-        # Pobiera tytuł pierwszego najpopularniejszego trendu
         top_keyword = feed.entries[0].title
         return top_keyword
     else:
@@ -22,7 +22,7 @@ def get_top_trend():
 def generate_article(keyword):
     """Generuje wartościowy artykuł informacyjny na dany temat."""
     prompt = f"""
-    Jesteś profesjonalnym dziennikarzem serwisu informacyjnego 'coWsieci'. 
+    Jesteś profesjonalnym dziennikarzem serwisu informacyjnego 'Co w Sieci'. 
     Twój cel: Napisać wartościowy, rzetelny artykuł informacyjny na temat: '{keyword}'.
     
     ZASADY TREŚCI:
@@ -32,7 +32,7 @@ def generate_article(keyword):
 
     STRUKTURA HTML:
     Zwróć wyłącznie sam czysty kod HTML (bez znaczników ```html i ```), zawierający:
-    - Nagłówek h1 z konkretnym, chwytliwym tytułem informacyjnym (np. "{keyword} – najważniejsze informacje, fakty i szczegóły")
+    - Nagłówek h1 z konkretnym, chwytliwym tytułem informacyjnym
     - Krótkie wprowadzenie przedstawiające temat i najistotniejsze kwestie
     - 2-3 sekcje z nagłówkami h2 szczegółowo opisujące dany temat
     - Sekcję FAQ z nagłówkiem h2 i 3 konkretnymi pytaniami oraz odpowiedziami dotyczącymi hasła '{keyword}'
@@ -47,31 +47,37 @@ def generate_article(keyword):
     return response.text.replace("```html", "").replace("```", "").strip()
 
 def save_html_page(keyword, article_html):
-    """Tworzy plik HTML dla danego wpisu i aktualizuje stronę główną."""
+    """Tworzy plik HTML dla danego wpisu ze zdjęciem oraz aktualizuje stronę główną."""
     slug = keyword.lower().replace(" ", "-").replace("/", "-")
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     filename = f"{slug}.html"
+    
+    # Generowanie bezpiecznego, darmowego zdjęcia tematycznego z Unsplash (na wolnej licencji)
+    encoded_keyword = urllib.parse.quote(keyword)
+    image_url = f"https://source.unsplash.com/800x450/?{encoded_keyword}"
     
     full_html = f"""<!DOCTYPE html>
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{keyword} - coWsieci</title>
+    <title>{keyword} - Co w Sieci</title>
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; }}
         header {{ border-bottom: 2px solid #0066cc; padding-bottom: 10px; margin-bottom: 20px; }}
-        header a {{ text-decoration: none; color: #0066cc; font-weight: bold; font-size: 1.5rem; }}
-        h1 {{ color: #111; }}
-        .meta {{ color: #666; font-size: 0.9rem; margin-bottom: 20px; }}
-        footer {{ margin-top: 40px; border-top: 1px solid #ddd; padding-top: 10px; font-size: 0.8rem; color: #777; }}
+        header a {{ text-decoration: none; color: #0066cc; font-weight: bold; font-size: 1.6rem; }}
+        h1 {{ color: #111; margin-top: 15px; }}
+        .meta {{ color: #666; font-size: 0.9rem; margin-bottom: 15px; }}
+        .featured-image {{ width: 100%; max-height: 400px; object-fit: cover; border-radius: 8px; margin-bottom: 20px; }}
+        footer {{ margin-top: 40px; border-top: 1px solid #ddd; padding-top: 15px; font-size: 0.85rem; color: #777; text-align: center; }}
     </style>
 </head>
 <body>
-    <header><a href="index.html">coWsieci</a></header>
-    <div class="meta">Opublikowano: {date_str} | Temat: {keyword}</div>
+    <header><a href="index.html">Co w Sieci</a></header>
+    <div class="meta">Opublikowano: {date_str}</div>
+    <img src="{image_url}" alt="{keyword}" class="featured-image" onerror="this.style.display='none'">
     <main>{article_html}</main>
-    <footer>&copy; {datetime.datetime.now().year} coWsieci - Automatyczny Serwis Informacyjny</footer>
+    <footer>&copy; {datetime.datetime.now().year} Co w Sieci</footer>
 </body>
 </html>"""
 
@@ -90,18 +96,25 @@ def update_index(keyword, filename, date_str):
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>coWsieci - Najważniejsze Tematy</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Co w Sieci</title>
     <style>
-        body {{ font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #333; }}
+        h1 {{ border-bottom: 2px solid #0066cc; padding-bottom: 10px; color: #0066cc; }}
         ul {{ list-style-type: none; padding: 0; }}
-        li {{ padding: 10px 0; border-bottom: 1px solid #eee; }}
+        li {{ padding: 12px 0; border-bottom: 1px solid #eee; font-size: 1.1rem; }}
+        li a {{ text-decoration: none; color: #111; font-weight: 500; }}
+        li a:hover {{ color: #0066cc; }}
+        li span {{ color: #888; font-size: 0.9rem; margin-right: 10px; }}
+        footer {{ margin-top: 40px; border-top: 1px solid #ddd; padding-top: 15px; font-size: 0.85rem; color: #777; text-align: center; }}
     </style>
 </head>
 <body>
-    <h1>coWsieci - Aktualne Tematy</h1>
+    <h1>Co w Sieci</h1>
     <ul id="trends-list">
     {entry}
     </ul>
+    <footer>&copy; {datetime.datetime.now().year} Co w Sieci</footer>
 </body>
 </html>"""
         with open(index_file, "w", encoding="utf-8") as f:
