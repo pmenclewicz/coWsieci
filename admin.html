@@ -3,29 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dodaj Słowa Kluczowe - Co w Sieci</title>
+    <title>Planowanie Artykułów - Co w Sieci</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #333; }
         h1 { color: #0066cc; border-bottom: 2px solid #0066cc; padding-bottom: 10px; }
         label { font-weight: bold; display: block; margin-top: 15px; }
-        textarea { width: 100%; height: 120px; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        button { background-color: #0066cc; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; margin-top: 15px; width: 100%; }
+        textarea, input { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        textarea { height: 100px; }
+        button { background-color: #0066cc; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; margin-top: 20px; width: 100%; font-weight: bold; }
         button:hover { background-color: #0052a3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
         .info { background: #eef6ff; border-left: 4px solid #0066cc; padding: 12px; margin-bottom: 20px; font-size: 0.9rem; }
-        #status { margin-top: 15px; font-weight: bold; }
+        #status { margin-top: 15px; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center; }
     </style>
 </head>
 <body>
     <h1>Planowanie Artykułów</h1>
     <div class="info">
-        Wpisz frazy rozdzielone przecinkami. Podczas **najbliższego co-godzinnego uruchomienia** bot pobierze je, wygeneruje dla nich osobne artykuły, po czym wyczyszcza listę.
+        Wpisz frazy rozdzielone przecinkami. Zostaną one dodane do kolejki i przetworzone przy **najbliższej pełnej godzinie**.
     </div>
 
     <form id="manual-form">
-        <label for="keywords">Słowa kluczowe (po przecinku):</label>
-        <textarea id="keywords" placeholder="np. Premiera gry XYZ, Wyniki wyborów, Jak usunąć plamy" required></textarea>
+        <label for="keywords">Słowa kluczowe (rozdzielone przecinkami):</label>
+        <textarea id="keywords" placeholder="np. Premiera nowego smartfona, Wyniki meczu, Jak dbać o rośliny" required></textarea>
 
         <label for="token">Personal Access Token (z uprawnieniem 'repo'):</label>
+        <input type="password" id="token" placeholder="ghp_..." required>
 
         <button type="submit" id="btn-submit">Dodaj do kolejki generowania</button>
     </form>
@@ -38,13 +41,15 @@
 
         document.getElementById('manual-form').addEventListener('submit', async (e) => {
             e.preventDefault();
+            
             const keywords = document.getElementById('keywords').value.trim();
             const token = document.getElementById('token').value.trim();
             const status = document.getElementById('status');
             const btn = document.getElementById('btn-submit');
 
-            status.style.color = 'black';
-            status.innerText = 'Zapisywanie w repozytorium...';
+            status.style.backgroundColor = '#fff3cd';
+            status.style.color = '#856404';
+            status.innerText = 'Zapisywanie w repozytorium... Proszę czekać.';
             btn.disabled = true;
 
             const url = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`;
@@ -53,9 +58,12 @@
                 let sha = "";
                 let existingContent = "";
 
-                // Pobranie aktualnej zawartości pliku jeśli istnieje
+                // 1. Pobranie aktualnej zawartości pliku z GitHuba
                 const getRes = await fetch(url, {
-                    headers: { 'Authorization': `token ${token}` }
+                    headers: { 
+                        'Authorization': `token ${token}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
                 });
 
                 if (getRes.ok) {
@@ -64,10 +72,11 @@
                     existingContent = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ''))));
                 }
 
-                // Połączenie starych i nowych fraz
+                // 2. Połączenie dotychczasowych fraz z nowymi
                 let finalContent = existingContent ? `${existingContent}, ${keywords}` : keywords;
                 const contentEncoded = btoa(unescape(encodeURIComponent(finalContent)));
 
+                // 3. Zapis nowego pliku do repozytorium
                 const bodyData = {
                     message: "Dodano frazy do kolejki generowania",
                     content: contentEncoded
@@ -78,23 +87,27 @@
                     method: 'PUT',
                     headers: {
                         'Authorization': `token ${token}`,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/vnd.github.v3+json'
                     },
                     body: JSON.stringify(bodyData)
                 });
 
                 if (putRes.ok) {
-                    status.style.color = 'green';
-                    status.innerText = 'Pomyślnie dodano do kolejki! Artykuły zostaną wygenerowane przy najbliższej pełnej godzinie.';
+                    status.style.backgroundColor = '#d4edda';
+                    status.style.color = '#155724';
+                    status.innerText = ' Success! Pomyślnie dodano frazy do kolejki. Artykuły zostaną wygenerowane o najbliższej pełnej godzinie.';
                     document.getElementById('keywords').value = '';
                 } else {
                     const errData = await putRes.json();
-                    status.style.color = 'red';
-                    status.innerText = 'Błąd zapisu: ' + (errData.message || 'Sprawdź token.');
+                    status.style.backgroundColor = '#f8d7da';
+                    status.style.color = '#721c24';
+                    status.innerText = ' Błąd zapisu: ' + (errData.message || 'Sprawdź poprawność tokenu.');
                 }
             } catch (err) {
-                status.style.color = 'red';
-                status.innerText = 'Błąd połączenia: ' + err.message;
+                status.style.backgroundColor = '#f8d7da';
+                status.style.color = '#721c24';
+                status.innerText = ' Błąd połączenia: ' + err.message;
             } finally {
                 btn.disabled = false;
             }
