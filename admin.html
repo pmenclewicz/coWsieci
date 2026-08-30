@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Dodawania Artykułów - Co w Sieci</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #333; }
+        h1 { color: #0066cc; border-bottom: 2px solid #0066cc; padding-bottom: 10px; }
+        label { font-weight: bold; display: block; margin-top: 15px; }
+        input[type="text"], textarea { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        textarea { height: 100px; }
+        button { background-color: #0066cc; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; margin-top: 15px; width: 100%; }
+        button:hover { background-color: #0052a3; }
+        .info { background: #eef6ff; border-left: 4px solid #0066cc; padding: 10px; margin-bottom: 20px; font-size: 0.9rem; }
+        #status { margin-top: 15px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Generowanie Artykułów (Ręczne)</h1>
+    <div class="info">
+        Wpisz frazy rozdzielone przecinkami. Podczas najbliższego uruchomienia bot wygeneruje dla nich osobne artykuły i doda je do strony.
+    </div>
+
+    <form id="manual-form">
+        <label for="repo">Nazwa repozytorium (użytkownik/repo):</label>
+        <input type="text" id="repo" placeholder="np. jan-kowalski/co-w-sieci" required>
+
+        <label for="token">Personal Access Token (GitHub):</label>
+        <input type="password" id="token" placeholder="ghp_xxxxxxxxxxxx" required>
+
+        <label for="keywords">Słowa kluczowe (po przecinku):</label>
+        <textarea id="keywords" placeholder="np. Meghan Markle wywiad, Nowy iPhone 16 cena, Reprezentacja Polski mecz" required></textarea>
+
+        <button type="submit">Zapisz i zleć generowanie</button>
+    </form>
+
+    <div id="status"></div>
+
+    <script>
+        document.getElementById('manual-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const repo = document.getElementById('repo').value.trim();
+            const token = document.getElementById('token').value.trim();
+            const keywords = document.getElementById('keywords').value.trim();
+            const status = document.getElementById('status');
+
+            status.style.color = 'black';
+            status.innerText = 'Zapisywanie...';
+
+            const filePath = 'manual_keywords.txt';
+            const url = `https://api.github.com/repos/${repo}/contents/${filePath}`;
+
+            try {
+                // 1. Pobierz SHA pliku, jeśli już istnieje
+                let sha = "";
+                const getRes = await fetch(url, {
+                    headers: { 'Authorization': `token ${token}` }
+                });
+                if (getRes.ok) {
+                    const data = await getRes.json();
+                    sha = data.sha;
+                }
+
+                // 2. Zapisz nowe słowa (zakodowane w Base64)
+                const contentEncoded = btoa(unescape(encodeURIComponent(keywords)));
+                const bodyData = {
+                    message: "Dodano ręczne słowa kluczowe do wygenerowania",
+                    content: contentEncoded
+                };
+                if (sha) bodyData.sha = sha;
+
+                const putRes = await fetch(url, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(bodyData)
+                });
+
+                if (putRes.ok) {
+                    status.style.color = 'green';
+                    status.innerText = 'Pomyślnie zapisano! Artykuły zostaną wygenerowane przy następnym cyklu bota.';
+                    document.getElementById('keywords').value = '';
+                } else {
+                    const errData = await putRes.json();
+                    status.style.color = 'red';
+                    status.innerText = 'Błąd zapisu: ' + (errData.message || 'Sprawdź token i nazwę repozytorium.');
+                }
+            } catch (err) {
+                status.style.color = 'red';
+                status.innerText = 'Wystąpił błąd sieci: ' + err.message;
+            }
+        });
+    </script>
+</body>
+</html>
