@@ -54,4 +54,10 @@
     <changefreq>never</changefreq>
     <priority>0.8</priority>
   </url>
+  <url>
+    <loc>https://pmenclewicz.github.io/coWsieci/rok-szkolny.html</loc>
+    <lastmod>2026-08-30</lastmod>
+    <changefreq>never</changefreq>
+    <priority>0.8</priority>
+  </url>
 </urlset>
