@@ -6,11 +6,9 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from google import genai
 
-# Pobranie klucza API z ustawień repozytorium GitHub
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Automatyczne ustalenie adresu strony na GitHub Pages
 GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "user/repo")
 if "/" in GITHUB_REPO:
     repo_owner, repo_name = GITHUB_REPO.split("/")
@@ -19,7 +17,6 @@ else:
     BASE_URL = "https://localhost"
 
 def slugify(text):
-    """Tworzy bezpieczną dla adresów URL i plików nazwę z dowolnego ciągu znaków."""
     text = text.lower()
     pl_map = {'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z'}
     for pl_char, latin_char in pl_map.items():
@@ -28,8 +25,14 @@ def slugify(text):
     text = re.sub(r'[\s-]+', '-', text).strip('-')
     return text or "article"
 
+def get_manual_keywords():
+    """Odczytuje ręcznie przekazane frazy ze zmiennej środowiskowej."""
+    raw_input = os.environ.get("MANUAL_KEYWORDS", "").strip()
+    if raw_input:
+        return [k.strip() for k in raw_input.split(",") if k.strip()]
+    return []
+
 def get_top_trend_data():
-    """Pobiera nagłówek, opis oraz artykuły powiązane z trendem z Google Trends."""
     url = "https://trends.google.pl/trending/rss?geo=PL"
     req = urllib.request.Request(
         url, 
@@ -59,19 +62,21 @@ def get_top_trend_data():
         
     raise Exception("Nie udało się pobrać aktualnego trendu z kanału RSS Google Trends.")
 
-def generate_article_seo(keyword, context_data):
-    """Generuje artykuł zoptymalizowany pod wyszukiwania Long-Tail, metadane SEO oraz tagi zdjęć."""
+def generate_article_seo(keyword, context_data=""):
     prompt = f"""
     Jesteś ekspertem SEO i dziennikarzem serwisu informacyjnego 'Co w Sieci'.
     
-    DANE WEJŚCIOWE Z GOOGLE TRENDS:
-    {context_data}
+    SŁOWO KLUCZOWE / TEMAT:
+    {keyword}
+    
+    DANE KONTEKSTOWE:
+    {context_data if context_data else "Brak dodatkowego kontekstu - napisz wyczerpujący artykuł na temat podanej frazy."}
     
     TWOJE ZADANIE:
     Napisz wyczerpujący, zoptymalizowany pod SEO artykuł, który odpowiada dokładnie na intencję szukających czytelników w Google.
     
     ZASADY SEO:
-    1. Tytuł (H1) musi być chwytliwy i celować w słowa długiego ogona (np. zamiast "Dziennikarz" daj "Co powiedział brytyjski dziennikarz o Meghan Markle? Szczegóły wypowiedzi").
+    1. Tytuł (H1) musi być chwytliwy i celować w słowa długiego ogona.
     2. Przygotuj unikalny opis Meta Description (maksymalnie 160 znaków), zawierający najważniejsze słowa kluczowe i zachęcający do kliknięcia.
     3. Dobierz 2-3 angielskie tagi do wyszukiwania grafiki (np. journalist,interview).
     
@@ -112,7 +117,6 @@ def generate_article_seo(keyword, context_data):
     return article_html, meta_desc, image_tags
 
 def save_html_page(keyword, article_html, meta_desc, image_tags):
-    """Tworzy plik HTML ze strukturą wspierającą pozycjonowanie w Google (JSON-LD, OpenGraph, Meta) oraz informacją o AI w stopce."""
     slug = slugify(keyword)
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     iso_date = datetime.datetime.now().isoformat()
@@ -122,7 +126,6 @@ def save_html_page(keyword, article_html, meta_desc, image_tags):
     clean_tags = re.sub(r'[^a-zA-Z0-9,]', '', image_tags).strip(',') or "news"
     image_url = f"https://loremflickr.com/800/400/{clean_tags}"
     
-    # Wyciągamy czysty tekst tytułu z tagu <h1> do znaczników meta/title
     h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', article_html, re.IGNORECASE | re.DOTALL)
     page_title = re.sub(r'<[^>]+>', '', h1_match.group(1)).strip() if h1_match else keyword
 
@@ -136,14 +139,12 @@ def save_html_page(keyword, article_html, meta_desc, image_tags):
     <meta name="keywords" content="{keyword}, informacje, newsy, co w sieci, wiadomosci">
     <link rel="canonical" href="{page_url}">
     
-    <!-- Open Graph / Facebook / Social Media -->
     <meta property="og:type" content="article">
     <meta property="og:url" content="{page_url}">
     <meta property="og:title" content="{page_title}">
     <meta property="og:description" content="{meta_desc}">
     <meta property="og:image" content="{image_url}">
 
-    <!-- Schema.org JSON-LD (Dane strukturalne dla Google) -->
     <script type="application/ld+json">
     {{
       "@context": "https://schema.org",
@@ -191,7 +192,6 @@ def save_html_page(keyword, article_html, meta_desc, image_tags):
     update_sitemap(filename, date_str)
 
 def update_index(page_title, filename, date_str, meta_desc):
-    """Aktualizuje stronę główną index.html dodając tytuł i zarys artykułu."""
     entry = f'''<li class="article-item">
         <span class="date">{date_str}</span>
         <h2><a href="{filename}">{page_title}</a></h2>
@@ -244,7 +244,6 @@ def update_index(page_title, filename, date_str, meta_desc):
                 f.write(updated_content)
 
 def update_sitemap(filename, date_str):
-    """Tworzy lub aktualizuje plik sitemap.xml dla robotów indeksujących Google."""
     sitemap_file = "sitemap.xml"
     new_url_entry = f"""  <url>
     <loc>{BASE_URL}/{filename}</loc>
@@ -276,8 +275,19 @@ def update_sitemap(filename, date_str):
                 f.write(updated_content)
 
 if __name__ == "__main__":
-    keyword, context_data = get_top_trend_data()
-    print(f"Pobrano temat: {keyword}")
-    article_html, meta_desc, image_tags = generate_article_seo(keyword, context_data)
-    save_html_page(keyword, article_html, meta_desc, image_tags)
-    print("Strona z metadanymi SEO, index.html oraz sitemap.xml zostały zaktualizowane pomyślnie.")
+    manual_keywords = get_manual_keywords()
+    
+    if manual_keywords:
+        print(f"Uruchomiono tryb natychmiastowy. Generowanie artykułów dla {len(manual_keywords)} słów kluczowych...")
+        for kw in manual_keywords:
+            print(f"Generowanie dla frazy: {kw}")
+            article_html, meta_desc, image_tags = generate_article_seo(kw)
+            save_html_page(kw, article_html, meta_desc, image_tags)
+    else:
+        print("Brak ręcznych słów kluczowych. Pobieranie automatycznych trendów z Google...")
+        keyword, context_data = get_top_trend_data()
+        print(f"Pobrano temat: {keyword}")
+        article_html, meta_desc, image_tags = generate_article_seo(keyword, context_data)
+        save_html_page(keyword, article_html, meta_desc, image_tags)
+        
+    print("Wykonano pomyślnie.")
