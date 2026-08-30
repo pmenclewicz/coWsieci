@@ -2,8 +2,8 @@ name: Automatic Trend Publisher
 
 on:
   schedule:
-# Uruchamiaj co godzinę, o minucie 00 (np. 10:00, 11:00, 12:00 itd.)
-    - cron: "0 * * * *"
+# Uruchamiaj co 4 godziny
+    - cron: "0 */4 * * *"
   workflow_dispatch:      # Pozwala uruchomić bota ręcznie
 
 jobs:
