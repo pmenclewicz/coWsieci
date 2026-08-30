@@ -14,21 +14,21 @@
         button:hover { background-color: #0052a3; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
         .info { background: #eef6ff; border-left: 4px solid #0066cc; padding: 12px; margin-bottom: 20px; font-size: 0.9rem; }
-        #status { margin-top: 15px; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center; }
+        #status { margin-top: 15px; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center; display: none; }
     </style>
 </head>
 <body>
     <h1>Planowanie Artykułów</h1>
     <div class="info">
-        Wpisz frazy rozdzielone przecinkami. Zostaną one dodane do kolejki i przetworzone przy **najbliższej pełnej godzinie**.
+        Wpisz frazy rozdzielone przecinkami. Zostaną one dodane do kolejki i wygenerowane podczas **najbliższego co-godzinnego uruchomienia**.
     </div>
 
     <form id="manual-form">
         <label for="keywords">Słowa kluczowe (rozdzielone przecinkami):</label>
-        <textarea id="keywords" placeholder="np. Premiera nowego smartfona, Wyniki meczu, Jak dbać o rośliny" required></textarea>
+        <textarea id="keywords" placeholder="np. Premiera gry, Wyniki meczu, Jak dbać o rośliny" required></textarea>
 
-        <label for="token">Personal Access Token (z uprawnieniem 'repo'):</label>
-        <input type="password" id="token" placeholder="ghp_..." required>
+        <label for="token">Personal Access Token GitHub (z uprawnieniem 'repo'):</label>
+        <input type="password" id="token" placeholder="Wklej token ghp_... lub github_pat_..." required>
 
         <button type="submit" id="btn-submit">Dodaj do kolejki generowania</button>
     </form>
@@ -47,6 +47,7 @@
             const status = document.getElementById('status');
             const btn = document.getElementById('btn-submit');
 
+            status.style.display = 'block';
             status.style.backgroundColor = '#fff3cd';
             status.style.color = '#856404';
             status.innerText = 'Zapisywanie w repozytorium... Proszę czekać.';
@@ -96,18 +97,18 @@
                 if (putRes.ok) {
                     status.style.backgroundColor = '#d4edda';
                     status.style.color = '#155724';
-                    status.innerText = ' Success! Pomyślnie dodano frazy do kolejki. Artykuły zostaną wygenerowane o najbliższej pełnej godzinie.';
+                    status.innerText = 'Sukces! Frazy zostały dodane do pliku w repozytorium. Artykuły wygenerują się przy najbliższej pełnej godzinie.';
                     document.getElementById('keywords').value = '';
                 } else {
                     const errData = await putRes.json();
                     status.style.backgroundColor = '#f8d7da';
                     status.style.color = '#721c24';
-                    status.innerText = ' Błąd zapisu: ' + (errData.message || 'Sprawdź poprawność tokenu.');
+                    status.innerText = 'Błąd zapisu: ' + (errData.message || 'Sprawdź poprawność tokenu.');
                 }
             } catch (err) {
                 status.style.backgroundColor = '#f8d7da';
                 status.style.color = '#721c24';
-                status.innerText = ' Błąd połączenia: ' + err.message;
+                status.innerText = 'Błąd połączenia: ' + err.message;
             } finally {
                 btn.disabled = false;
             }
