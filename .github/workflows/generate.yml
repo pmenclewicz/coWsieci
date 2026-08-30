@@ -2,13 +2,8 @@ name: Generate Articles
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Automatyczne uruchamianie co 6 godzin
-  workflow_dispatch:        # Uruchamianie na żądanie (przez API / formularz)
-    inputs:
-      manual_keywords:
-        description: 'Słowa kluczowe rozdzielone przecinkami'
-        required: false
-        default: ''
+    - cron: '0 * * * *'  # Uruchamianie automatyczne co pełną godzinę
+  workflow_dispatch:      # Możliwość ręcznego uruchomienia przyciskiem w zakładce Actions
 
 jobs:
   build-and-run:
@@ -30,13 +25,12 @@ jobs:
       - name: Run Bot Script
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          MANUAL_KEYWORDS: ${{ github.event.inputs.manual_keywords }}
         run: python bot.py
 
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.html sitemap.xml *.html
-          git commit -m "Automatyczne wygenerowanie nowych artykułów" || exit 0
+          git add index.html sitemap.xml manual_keywords.txt *.html
+          git commit -m "Automatyczne wygenerowanie wpisów [co godzinę]" || exit 0
           git push
