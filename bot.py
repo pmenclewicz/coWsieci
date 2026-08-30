@@ -9,7 +9,7 @@ from google import genai
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "user/repo")
+GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "pmenclewicz/szkola")
 if "/" in GITHUB_REPO:
     repo_owner, repo_name = GITHUB_REPO.split("/")
     BASE_URL = f"https://{repo_owner}.github.io/{repo_name}"
@@ -26,10 +26,16 @@ def slugify(text):
     return text or "article"
 
 def get_manual_keywords():
-    """Odczytuje ręcznie przekazane frazy ze zmiennej środowiskowej."""
-    raw_input = os.environ.get("MANUAL_KEYWORDS", "").strip()
-    if raw_input:
-        return [k.strip() for k in raw_input.split(",") if k.strip()]
+    """Odczytuje frazy z pliku manual_keywords.txt i czyści plik po odczycie."""
+    file_path = "manual_keywords.txt"
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+        if content:
+            keywords = [k.strip() for k in content.split(",") if k.strip()]
+            # Wyszczyść plik po odczytaniu, by nie generować tego samego przy kolejnej godzinie
+            open(file_path, "w", encoding="utf-8").close()
+            return keywords
     return []
 
 def get_top_trend_data():
@@ -278,16 +284,16 @@ if __name__ == "__main__":
     manual_keywords = get_manual_keywords()
     
     if manual_keywords:
-        print(f"Uruchomiono tryb natychmiastowy. Generowanie artykułów dla {len(manual_keywords)} słów kluczowych...")
+        print(f"Znaleziono {len(manual_keywords)} ręcznie dodanych fraz w kolejce. Generowanie...")
         for kw in manual_keywords:
-            print(f"Generowanie dla frazy: {kw}")
+            print(f"Generowanie artykułu dla frazy: {kw}")
             article_html, meta_desc, image_tags = generate_article_seo(kw)
             save_html_page(kw, article_html, meta_desc, image_tags)
     else:
-        print("Brak ręcznych słów kluczowych. Pobieranie automatycznych trendów z Google...")
+        print("Kolejka ręczna jest pusta. Pobieranie automatycznego trendu z Google Trends...")
         keyword, context_data = get_top_trend_data()
-        print(f"Pobrano temat: {keyword}")
+        print(f"Pobrano temat z Google: {keyword}")
         article_html, meta_desc, image_tags = generate_article_seo(keyword, context_data)
         save_html_page(keyword, article_html, meta_desc, image_tags)
         
-    print("Wykonano pomyślnie.")
+    print("Zakończono pracę.")
