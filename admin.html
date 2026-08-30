@@ -59,10 +59,10 @@
                 let sha = "";
                 let existingContent = "";
 
-                // 1. Pobranie aktualnej zawartości pliku z GitHuba
+                // Pobranie pliku
                 const getRes = await fetch(url, {
                     headers: { 
-                        'Authorization': `token ${token}`,
+                        'Authorization': `Bearer ${token}`,
                         'Accept': 'application/vnd.github.v3+json'
                     }
                 });
@@ -73,11 +73,9 @@
                     existingContent = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ''))));
                 }
 
-                // 2. Połączenie dotychczasowych fraz z nowymi
                 let finalContent = existingContent ? `${existingContent}, ${keywords}` : keywords;
                 const contentEncoded = btoa(unescape(encodeURIComponent(finalContent)));
 
-                // 3. Zapis nowego pliku do repozytorium
                 const bodyData = {
                     message: "Dodano frazy do kolejki generowania",
                     content: contentEncoded
@@ -87,7 +85,7 @@
                 const putRes = await fetch(url, {
                     method: 'PUT',
                     headers: {
-                        'Authorization': `token ${token}`,
+                        'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json',
                         'Accept': 'application/vnd.github.v3+json'
                     },
@@ -97,13 +95,17 @@
                 if (putRes.ok) {
                     status.style.backgroundColor = '#d4edda';
                     status.style.color = '#155724';
-                    status.innerText = 'Sukces! Frazy zostały dodane do pliku w repozytorium. Artykuły wygenerują się przy najbliższej pełnej godzinie.';
+                    status.innerText = 'Sukces! Frazy zostały dodane do pliku w repozytorium.';
                     document.getElementById('keywords').value = '';
                 } else {
                     const errData = await putRes.json();
                     status.style.backgroundColor = '#f8d7da';
                     status.style.color = '#721c24';
-                    status.innerText = 'Błąd zapisu: ' + (errData.message || 'Sprawdź poprawność tokenu.');
+                    if (putRes.status === 404) {
+                        status.innerText = 'Błąd 404: Sprawdź czy token posiada uprawnienia "repo" lub czy nazwa repozytorium (pmenclewicz/coWsieci) jest poprawna.';
+                    } else {
+                        status.innerText = 'Błąd zapisu: ' + (errData.message || 'Nieznany błąd.');
+                    }
                 }
             } catch (err) {
                 status.style.backgroundColor = '#f8d7da';
