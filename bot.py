@@ -112,7 +112,7 @@ def generate_article_seo(keyword, context_data):
     return article_html, meta_desc, image_tags
 
 def save_html_page(keyword, article_html, meta_desc, image_tags):
-    """Tworzy plik HTML ze strukturą wspierającą pozycjonowanie w Google (JSON-LD, OpenGraph, Meta)."""
+    """Tworzy plik HTML ze strukturą wspierającą pozycjonowanie w Google (JSON-LD, OpenGraph, Meta) oraz informacją o AI w stopce."""
     slug = slugify(keyword)
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     iso_date = datetime.datetime.now().isoformat()
@@ -169,6 +169,7 @@ def save_html_page(keyword, article_html, meta_desc, image_tags):
         .meta {{ color: #666; font-size: 0.9rem; margin-bottom: 15px; }}
         .featured-image {{ width: 100%; max-height: 400px; object-fit: cover; border-radius: 8px; margin-bottom: 20px; }}
         footer {{ margin-top: 40px; border-top: 1px solid #ddd; padding-top: 15px; font-size: 0.85rem; color: #777; text-align: center; }}
+        .ai-notice {{ font-style: italic; color: #888; margin-top: 5px; }}
     </style>
 </head>
 <body>
@@ -176,7 +177,10 @@ def save_html_page(keyword, article_html, meta_desc, image_tags):
     <div class="meta">Opublikowano: {date_str}</div>
     <img src="{image_url}" alt="{page_title}" class="featured-image" onerror="this.style.display='none'">
     <main>{article_html}</main>
-    <footer>&copy; {datetime.datetime.now().year} Co w Sieci</footer>
+    <footer>
+        <div>&copy; {datetime.datetime.now().year} Co w Sieci</div>
+        <div class="ai-notice">Ten artykuł został automatycznie wygenerowany przez sztuczną inteligencję (AI) na podstawie aktualnych trendów.</div>
+    </footer>
 </body>
 </html>"""
 
@@ -214,6 +218,7 @@ def update_index(page_title, filename, date_str, meta_desc):
         .date {{ color: #888; font-size: 0.85rem; }}
         .summary {{ color: #555; font-size: 0.95rem; margin-top: 5px; }}
         footer {{ margin-top: 40px; border-top: 1px solid #ddd; padding-top: 15px; font-size: 0.85rem; color: #777; text-align: center; }}
+        .ai-notice {{ font-style: italic; color: #888; margin-top: 5px; }}
     </style>
 </head>
 <body>
@@ -221,7 +226,10 @@ def update_index(page_title, filename, date_str, meta_desc):
     <ul id="trends-list">
     {entry}
     </ul>
-    <footer>&copy; {datetime.datetime.now().year} Co w Sieci</footer>
+    <footer>
+        <div>&copy; {datetime.datetime.now().year} Co w Sieci</div>
+        <div class="ai-notice">Treści na stronie są generowane automatycznie przez sztuczną inteligencję (AI) na podstawie aktualnych trendów.</div>
+    </footer>
 </body>
 </html>"""
         with open(index_file, "w", encoding="utf-8") as f:
