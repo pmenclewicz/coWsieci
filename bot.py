@@ -16,6 +16,8 @@ if "/" in GITHUB_REPO:
 else:
     BASE_URL = "https://localhost"
 
+BASE_URL = "https://cowsieci.pl"
+
 def slugify(text):
     text = text.lower()
     pl_map = {'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z'}
