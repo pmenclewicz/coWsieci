@@ -1,6 +1,7 @@
 import os
 import re
 import io
+import time
 import datetime
 import urllib.parse
 import urllib.request
@@ -26,7 +27,6 @@ def slugify(text):
     return text or "article"
 
 def get_manual_keywords():
-    """Odczytuje frazy z pliku manual_keywords.txt i czyści plik po odczycie."""
     file_path = "manual_keywords.txt"
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:
@@ -38,7 +38,6 @@ def get_manual_keywords():
     return []
 
 def get_top_trend_data():
-    """Pobiera najpopularniejszy trend z kanału RSS Google Trends PL."""
     url = "https://trends.google.pl/trending/rss?geo=PL"
     req = urllib.request.Request(
         url, 
@@ -69,7 +68,6 @@ def get_top_trend_data():
     raise Exception("Nie udało się pobrać aktualnego trendu z kanału RSS Google Trends.")
 
 def generate_article_seo(keyword, context_data=""):
-    """Generuje artykuł SEO oraz prompt po angielsku do wygenerowania grafiki AI."""
     prompt = f"""
     Jesteś ekspertem SEO i dziennikarzem serwisu informacyjnego 'Co w Sieci'.
     
@@ -96,10 +94,27 @@ def generate_article_seo(keyword, context_data=""):
     [Kod HTML artykułu: H1, wstęp, 2-3 sekcje H2 ze szczegółami, sekcja H2 z FAQ z 3 pytaniami]
     """
     
-    response = client.models.generate_content(
-        model='gemini-3.6-flash',
-        contents=prompt,
-    )
+    max_retries = 3
+    response = None
+    
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model='gemini-3.6-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+                )
+            )
+            break
+        except Exception as e:
+            if "503" in str(e) or "UNAVAILABLE" in str(e):
+                print(f"Serwery Google są przeciążone (503). Próba {attempt + 1}/{max_retries}. Czekam 15 sekund...")
+                time.sleep(15)
+                if attempt == max_retries - 1:
+                    raise e
+            else:
+                raise e
     
     raw_text = response.text.replace("```html", "").replace("```", "").strip()
     
@@ -122,30 +137,35 @@ def generate_article_seo(keyword, context_data=""):
     return article_html, meta_desc, image_prompt
 
 def generate_ai_image(image_prompt, output_filename):
-    """Generuje zdjęcie nagłówkowe (Imagen 3) i kompresuje plik."""
-    try:
-        print(f"Generowanie obrazu AI z promptem: {image_prompt}")
-        result = client.models.generate_images(
-            model='imagen-3.0-generate-002',
-            prompt=image_prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio="16:9",
-                output_mime_type="image/jpeg"
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            print(f"Generowanie obrazu AI z promptem: {image_prompt}")
+            result = client.models.generate_images(
+                model='imagen-3.0-generate-002',
+                prompt=image_prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    aspect_ratio="16:9",
+                    output_mime_type="image/jpeg"
+                )
             )
-        )
-        for generated_image in result.generated_images:
-            img = Image.open(io.BytesIO(generated_image.image.image_bytes))
-            img.thumbnail((600, 337))
-            img.save(output_filename, "JPEG", quality=40, optimize=True)
-            
-        return True
-    except Exception as e:
-        print(f"Nie udało się wygenerować obrazu przez AI: {e}")
-        return False
+            for generated_image in result.generated_images:
+                img = Image.open(io.BytesIO(generated_image.image.image_bytes))
+                img.thumbnail((600, 337))
+                img.save(output_filename, "JPEG", quality=40, optimize=True)
+                
+            return True
+        except Exception as e:
+            if "503" in str(e) or "UNAVAILABLE" in str(e):
+                print(f"Przeciążenie serwera podczas generowania grafiki. Próba {attempt + 1}/{max_retries}. Czekam 15 sekund...")
+                time.sleep(15)
+            else:
+                print(f"Nie udało się wygenerować obrazu przez AI: {e}")
+                return False
+    return False
 
 def save_html_page(keyword, article_html, meta_desc, image_prompt):
-    """Generuje pełny plik HTML artykułu, wywołuje generowanie grafiki i dopisuje stronę do indeksu."""
     slug = slugify(keyword)
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     iso_date = datetime.datetime.now().isoformat()
@@ -230,7 +250,6 @@ def save_html_page(keyword, article_html, meta_desc, image_prompt):
     update_sitemap(filename, date_str)
 
 def update_index(page_title, filename, date_str, meta_desc):
-    """Aktualizuje listę artykułów na stronie głównej index.html."""
     entry = f'''<li class="article-item">
         <span class="date">{date_str}</span>
         <h2><a href="{filename}">{page_title}</a></h2>
@@ -283,7 +302,6 @@ def update_index(page_title, filename, date_str, meta_desc):
                 f.write(updated_content)
 
 def update_sitemap(filename, date_str):
-    """Dodaje nowo wygenerowany artykuł do mapy witryny sitemap.xml."""
     sitemap_file = "sitemap.xml"
     new_url_entry = f"""  <url>
     <loc>{BASE_URL}/{filename}</loc>
