@@ -101,4 +101,4 @@ def generate_article_seo(keyword, context_data=""):
         contents=prompt,
     )
     
-    raw_text = response.text.replace("```html", "").replace("
+raw_text = response.text.replace("```html", "").replace("```", "").strip()
