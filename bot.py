@@ -96,13 +96,238 @@ def generate_article_seo(keyword, context_data=""):
     [Kod HTML artykułu: H1, wstęp, 2-3 sekcje H2 ze szczegółami, sekcja H2 z FAQ z 3 pytaniami]
     """
     
-    # Aktualizacja do zalecanego modelu gemini-3.6-flash + wyłączenie zbędnego AFC
     response = client.models.generate_content(
         model='gemini-3.6-flash',
         contents=prompt,
-        config=types.GenerateContentConfig(
-            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
-        )
     )
     
-    raw_text = response.text.replace("```html", "").replace("
+    raw_text = response.text.replace("```html", "").replace("```", "").strip()
+    
+    meta_desc = f"Aktualne informacje i szczegóły wydarzenia: {keyword}."
+    image_prompt = f"Editorial news photo representing {keyword}, highly detailed, photorealistic"
+    article_html = raw_text
+    
+    try:
+        if "---META_DESCRIPTION---" in raw_text and "---ARTICLE---" in raw_text:
+            parts = raw_text.split("---ARTICLE---")
+            article_html = parts[1].strip()
+            
+            header_parts = parts[0].split("---IMAGE_PROMPT---")
+            meta_desc = header_parts[0].replace("---META_DESCRIPTION---", "").strip()
+            if len(header_parts) > 1:
+                image_prompt = header_parts[1].strip()
+    except Exception as e:
+        print(f"Błąd parsowania odpowiedzi Gemini: {e}")
+        
+    return article_html, meta_desc, image_prompt
+
+def generate_ai_image(image_prompt, output_filename):
+    """Generuje zdjęcie nagłówkowe (Imagen 3) i kompresuje plik."""
+    try:
+        print(f"Generowanie obrazu AI z promptem: {image_prompt}")
+        result = client.models.generate_images(
+            model='imagen-3.0-generate-002',
+            prompt=image_prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="16:9",
+                output_mime_type="image/jpeg"
+            )
+        )
+        for generated_image in result.generated_images:
+            img = Image.open(io.BytesIO(generated_image.image.image_bytes))
+            img.thumbnail((600, 337))
+            img.save(output_filename, "JPEG", quality=40, optimize=True)
+            
+        return True
+    except Exception as e:
+        print(f"Nie udało się wygenerować obrazu przez AI: {e}")
+        return False
+
+def save_html_page(keyword, article_html, meta_desc, image_prompt):
+    """Generuje pełny plik HTML artykułu, wywołuje generowanie grafiki i dopisuje stronę do indeksu."""
+    slug = slugify(keyword)
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    iso_date = datetime.datetime.now().isoformat()
+    filename = f"{slug}.html"
+    image_filename = f"{slug}.jpg"
+    
+    page_url = f"{BASE_URL}/{filename}"
+    image_url = f"{BASE_URL}/{image_filename}"
+    
+    success = generate_ai_image(image_prompt, image_filename)
+    if not success:
+        image_filename = "https://picsum.photos/600/337"
+
+    h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', article_html, re.IGNORECASE | re.DOTALL)
+    page_title = re.sub(r'<[^>]+>', '', h1_match.group(1)).strip() if h1_match else keyword
+
+    full_html = f"""<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{page_title} - Co w Sieci</title>
+    <meta name="description" content="{meta_desc}">
+    <meta name="keywords" content="{keyword}, informacje, newsy, co w sieci, wiadomosci">
+    <link rel="canonical" href="{page_url}">
+    
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="{page_url}">
+    <meta property="og:title" content="{page_title}">
+    <meta property="og:description" content="{meta_desc}">
+    <meta property="og:image" content="{image_url}">
+
+    <script type="application/ld+json">
+    {{
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      "headline": "{page_title}",
+      "image": ["{image_url}"],
+      "datePublished": "{iso_date}",
+      "dateModified": "{iso_date}",
+      "description": "{meta_desc}",
+      "mainEntityOfPage": {{
+        "@type": "WebPage",
+        "@id": "{page_url}"
+      }}
+    }}
+    </script>
+
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; }}
+        header {{ border-bottom: 2px solid #0066cc; padding-bottom: 10px; margin-bottom: 20px; }}
+        header a {{ text-decoration: none; color: #0066cc; font-weight: bold; font-size: 1.6rem; }}
+        h1 {{ color: #111; margin-top: 15px; line-height: 1.3; }}
+        h2 {{ color: #0066cc; margin-top: 25px; }}
+        .meta {{ color: #666; font-size: 0.9rem; margin-bottom: 15px; }}
+        .featured-image-container {{ margin-bottom: 20px; }}
+        .featured-image {{ width: 100%; max-height: 450px; object-fit: cover; border-radius: 8px; display: block; }}
+        .image-caption {{ font-size: 0.8rem; color: #777; margin-top: 5px; text-align: right; font-style: italic; }}
+        footer {{ margin-top: 40px; border-top: 1px solid #ddd; padding-top: 15px; font-size: 0.85rem; color: #777; text-align: center; }}
+        .ai-notice {{ font-style: italic; color: #888; margin-top: 5px; }}
+    </style>
+</head>
+<body>
+    <header><a href="index.html">Co w Sieci</a></header>
+    <div class="meta">Opublikowano: {date_str}</div>
+    <div class="featured-image-container">
+        <img src="{image_filename}" alt="{page_title}" class="featured-image" onerror="this.style.display='none'">
+        <div class="image-caption">Grafika wygenerowana przez AI na potrzeby artykułu.</div>
+    </div>
+    <main>{article_html}</main>
+    <footer>
+        <div>&copy; {datetime.datetime.now().year} Co w Sieci</div>
+        <div class="ai-notice">Ten artykuł oraz ilustracja zostały automatycznie wygenerowane przez sztuczną inteligencję (AI).</div>
+    </footer>
+</body>
+</html>"""
+
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(full_html)
+    
+    update_index(page_title, filename, date_str, meta_desc)
+    update_sitemap(filename, date_str)
+
+def update_index(page_title, filename, date_str, meta_desc):
+    """Aktualizuje listę artykułów na stronie głównej index.html."""
+    entry = f'''<li class="article-item">
+        <span class="date">{date_str}</span>
+        <h2><a href="{filename}">{page_title}</a></h2>
+        <p class="summary">{meta_desc}</p>
+    </li>\n'''
+    
+    index_file = "index.html"
+    if not os.path.exists(index_file):
+        base_index = f"""<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Co w Sieci - Najnowsze Informacje i Wiadomości</title>
+    <meta name="description" content="Serwis informacyjny prezentujący najnowsze tematy i wydarzenia.">
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #333; }}
+        h1 {{ border-bottom: 2px solid #0066cc; padding-bottom: 10px; color: #0066cc; }}
+        ul {{ list-style-type: none; padding: 0; }}
+        .article-item {{ padding: 15px 0; border-bottom: 1px solid #eee; }}
+        .article-item h2 {{ margin: 5px 0; font-size: 1.3rem; }}
+        .article-item a {{ text-decoration: none; color: #111; }}
+        .article-item a:hover {{ color: #0066cc; }}
+        .date {{ color: #888; font-size: 0.85rem; }}
+        .summary {{ color: #555; font-size: 0.95rem; margin-top: 5px; }}
+        footer {{ margin-top: 40px; border-top: 1px solid #ddd; padding-top: 15px; font-size: 0.85rem; color: #777; text-align: center; }}
+        .ai-notice {{ font-style: italic; color: #888; margin-top: 5px; }}
+    </style>
+</head>
+<body>
+    <h1>Co w Sieci</h1>
+    <ul id="trends-list">
+    {entry}
+    </ul>
+    <footer>
+        <div>&copy; {datetime.datetime.now().year} Co w Sieci</div>
+        <div class="ai-notice">Treści oraz ilustracje na stronie są generowane automatycznie przez sztuczną inteligencję (AI).</div>
+    </footer>
+</body>
+</html>"""
+        with open(index_file, "w", encoding="utf-8") as f:
+            f.write(base_index)
+    else:
+        with open(index_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        if f'href="{filename}"' not in content:
+            updated_content = content.replace('<ul id="trends-list">', f'<ul id="trends-list">\n    {entry}')
+            with open(index_file, "w", encoding="utf-8") as f:
+                f.write(updated_content)
+
+def update_sitemap(filename, date_str):
+    """Dodaje nowo wygenerowany artykuł do mapy witryny sitemap.xml."""
+    sitemap_file = "sitemap.xml"
+    new_url_entry = f"""  <url>
+    <loc>{BASE_URL}/{filename}</loc>
+    <lastmod>{date_str}</lastmod>
+    <changefreq>never</changefreq>
+    <priority>0.8</priority>
+  </url>"""
+
+    if not os.path.exists(sitemap_file):
+        sitemap_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>{BASE_URL}/index.html</loc>
+    <lastmod>{date_str}</lastmod>
+    <changefreq>always</changefreq>
+    <priority>1.0</priority>
+  </url>
+{new_url_entry}
+</urlset>"""
+        with open(sitemap_file, "w", encoding="utf-8") as f:
+            f.write(sitemap_content)
+    else:
+        with open(sitemap_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        if f"{BASE_URL}/{filename}" not in content:
+            updated_content = content.replace('</urlset>', f'{new_url_entry}\n</urlset>')
+            with open(sitemap_file, "w", encoding="utf-8") as f:
+                f.write(updated_content)
+
+if __name__ == "__main__":
+    manual_keywords = get_manual_keywords()
+    
+    if manual_keywords:
+        print(f"Znaleziono {len(manual_keywords)} ręcznie dodanych fraz w kolejce. Generowanie...")
+        for kw in manual_keywords:
+            print(f"Generowanie artykułu i grafiki dla frazy: {kw}")
+            article_html, meta_desc, image_prompt = generate_article_seo(kw)
+            save_html_page(kw, article_html, meta_desc, image_prompt)
+    else:
+        print("Kolejka ręczna jest pusta. Pobieranie automatycznego trendu z Google Trends...")
+        keyword, context_data = get_top_trend_data()
+        print(f"Pobrano temat z Google: {keyword}")
+        article_html, meta_desc, image_prompt = generate_article_seo(keyword, context_data)
+        save_html_page(keyword, article_html, meta_desc, image_prompt)
+        
+    print("Zakończono pracę bota.")
