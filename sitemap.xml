@@ -204,4 +204,10 @@
     <changefreq>never</changefreq>
     <priority>0.8</priority>
   </url>
+  <url>
+    <loc>https://cowsieci.pl/agnieszka-wozniak-starak.html</loc>
+    <lastmod>2026-09-05</lastmod>
+    <changefreq>never</changefreq>
+    <priority>0.8</priority>
+  </url>
 </urlset>
