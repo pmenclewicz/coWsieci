@@ -30,6 +30,7 @@ jobs:
       - name: Run Trend Bot
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: python bot.py
 
       - name: Commit and Push changes
