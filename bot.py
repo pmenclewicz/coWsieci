@@ -83,7 +83,7 @@ def generate_article_seo(keyword, context_data=""):
     ZASADY SEO I GRAFIKI:
     1. Tytuł (H1) musi być chwytliwy i celować w słowa długiego ogona.
     2. Opis Meta Description (maksymalnie 160 znaków).
-    3. IMAGE_PROMPT musi być szczegółowym opisem sceny po angielsku dla AI. Styl: photorealistic, 4k, news style editorial photography, neutral lighting, no text on image.
+    3. IMAGE_PROMPT musi być BARDZO DOSŁOWNYM i KONKRETNYM opisem wizualnym po angielsku. Skup się wyłącznie na fizycznych obiektach, ludziach, akcji i scenerii. ZABRONIONE jest używanie metafor, symboli i abstrakcyjnych koncepcji (np. zamiast "kryzys finansowy" opisz "wykresy giełdowe spadające w dół na ekranie komputera" lub "zmartwiony biznesmen"). Dodaj na końcu: "photorealistic, 4k, news style editorial photography, neutral lighting, NO text, NO letters, NO words".
     
     STRUKTURA WYJŚCIOWA (Użyj dokładnie tych separatorów):
     ---META_DESCRIPTION---
@@ -119,7 +119,7 @@ def generate_article_seo(keyword, context_data=""):
     raw_text = response.text.replace("```html", "").replace("```", "").strip()
     
     meta_desc = f"Aktualne informacje i szczegóły wydarzenia: {keyword}."
-    image_prompt = f"Editorial news photo representing {keyword}, highly detailed, photorealistic"
+    image_prompt = f"A literal and realistic news editorial photography depicting the physical scene of: {keyword}. Photorealistic, 4k, completely textless, no letters, no words."
     article_html = raw_text
     
     try:
