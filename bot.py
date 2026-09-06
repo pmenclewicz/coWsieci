@@ -2,6 +2,7 @@ import os
 import re
 import io
 import time
+import json
 import datetime
 import urllib.parse
 import urllib.request
@@ -12,6 +13,7 @@ from google.genai import types
 
 # Konfiguracja API i środowiska
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "pmenclewicz/szkola")
@@ -165,6 +167,45 @@ def generate_ai_image(image_prompt, output_filename):
                 return False
     return False
 
+def download_pexels_image(keyword, output_filename):
+    if not PEXELS_API_KEY:
+        print("Brak klucza PEXELS_API_KEY. Pomijam pobieranie ze stocka.")
+        return False
+        
+    try:
+        # Bierzemy max 2 słowa, aby wyszukiwanie na giełdzie zdjęć było skuteczniejsze
+        search_query = " ".join(keyword.split()[:2])
+        encoded_query = urllib.parse.quote(search_query)
+        url = f"https://api.pexels.com/v1/search?query={encoded_query}&per_page=1&orientation=landscape"
+        
+        req = urllib.request.Request(url, headers={'Authorization': PEXELS_API_KEY})
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            
+            if data.get('photos') and len(data['photos']) > 0:
+                image_url = data['photos'][0]['src']['large']
+                
+                img_req = urllib.request.Request(image_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(img_req) as img_res:
+                    img_data = img_res.read()
+                    
+                img = Image.open(io.BytesIO(img_data))
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Optymalizujemy wielkość jak przy AI, by zaoszczędzić miejsce i przyspieszyć stronę
+                img.thumbnail((600, 337))
+                img.save(output_filename, "JPEG", quality=70, optimize=True)
+                
+                print(f"Sukces! Pobrano zdjęcie z Pexels dla: {search_query}")
+                return True
+            else:
+                print(f"Nie znaleziono odpowiedniego zdjęcia na Pexels dla hasła: {search_query}")
+    except Exception as e:
+        print(f"Błąd Pexels: {e}")
+        
+    return False
+
 def save_html_page(keyword, article_html, meta_desc, image_prompt):
     slug = slugify(keyword)
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -173,11 +214,23 @@ def save_html_page(keyword, article_html, meta_desc, image_prompt):
     image_filename = f"{slug}.jpg"
     
     page_url = f"{BASE_URL}/{filename}"
-    image_url = f"{BASE_URL}/{image_filename}"
+    
+    # Proces wyboru obrazka:
+    image_caption = "Grafika wygenerowana przez sztuczną inteligencję (AI) na potrzeby artykułu."
     
     success = generate_ai_image(image_prompt, image_filename)
     if not success:
-        image_filename = "https://picsum.photos/600/337"
+        print("Grafika AI nie powiodła się. Próba pobrania z Pexels...")
+        if download_pexels_image(keyword, image_filename):
+            image_caption = "Zdjęcie ilustracyjne pochodzące z darmowej bazy Pexels."
+        else:
+            print("Pexels też nie znalazł. Ustawianie stałego zdjęcia z LoremFlickr...")
+            tags = slug.replace('-', ',')
+            lock_id = sum(ord(c) for c in slug) % 10000
+            image_filename = f"https://loremflickr.com/600/337/{tags}?lock={lock_id}"
+            image_caption = "Zdjęcie ilustracyjne."
+            
+    image_url = f"{BASE_URL}/{image_filename}" if not image_filename.startswith('http') else image_filename
 
     h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', article_html, re.IGNORECASE | re.DOTALL)
     page_title = re.sub(r'<[^>]+>', '', h1_match.group(1)).strip() if h1_match else keyword
@@ -233,12 +286,12 @@ def save_html_page(keyword, article_html, meta_desc, image_prompt):
     <div class="meta">Opublikowano: {date_str}</div>
     <div class="featured-image-container">
         <img src="{image_filename}" alt="{page_title}" class="featured-image" onerror="this.style.display='none'">
-        <div class="image-caption">Grafika wygenerowana przez AI na potrzeby artykułu.</div>
+        <div class="image-caption">{image_caption}</div>
     </div>
     <main>{article_html}</main>
     <footer>
         <div>&copy; {datetime.datetime.now().year} Co w Sieci</div>
-        <div class="ai-notice">Ten artykuł oraz ilustracja zostały automatycznie wygenerowane przez sztuczną inteligencję (AI).</div>
+        <div class="ai-notice">Ten artykuł został automatycznie wygenerowany.</div>
     </footer>
 </body>
 </html>"""
@@ -286,7 +339,7 @@ def update_index(page_title, filename, date_str, meta_desc):
     </ul>
     <footer>
         <div>&copy; {datetime.datetime.now().year} Co w Sieci</div>
-        <div class="ai-notice">Treści oraz ilustracje na stronie są generowane automatycznie przez sztuczną inteligencję (AI).</div>
+        <div class="ai-notice">Treści na stronie są generowane automatycznie.</div>
     </footer>
 </body>
 </html>"""
