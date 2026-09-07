@@ -31,4 +31,10 @@
     <changefreq>never</changefreq>
     <priority>0.8</priority>
   </url>
+  <url>
+    <loc>https://cowsieci.pl/dawid-kownacki.html</loc>
+    <lastmod>2026-09-07</lastmod>
+    <changefreq>never</changefreq>
+    <priority>0.8</priority>
+  </url>
 </urlset>
