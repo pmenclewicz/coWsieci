@@ -217,4 +217,10 @@
     <changefreq>never</changefreq>
     <priority>0.8</priority>
   </url>
+  <url>
+    <loc>https://cowsieci.pl/woda.html</loc>
+    <lastmod>2026-09-12</lastmod>
+    <changefreq>never</changefreq>
+    <priority>0.8</priority>
+  </url>
 </urlset>
