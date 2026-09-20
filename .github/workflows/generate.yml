@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Pobiera pełną historię repozytorium, pomaga przy rebase
+          fetch-depth: 0  # Pobiera pełną historię repozytorium
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -37,10 +37,15 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 1. Najpierw pobieramy najnowsze zmiany z repozytorium (z rebase)
+          git pull --rebase origin main || echo "Brak zmian do pobrania lub pominięto"
+          
+          # 2. Dodajemy wygenerowane pliki
           git add index.html sitemap.xml manual_keywords.txt *.html *.jpg
-          git commit -m "Automatyczna publikacja wpisów i grafik AI" || exit 0
           
-          # Pobranie najnowszych zmian z GitHuba przed wysłaniem nowych plików
-          git pull --rebase origin main
+          # 3. Sprawdzamy czy są jakiekolwiek zmiany do zatwierdzenia
+          git diff --staged --quiet || git commit -m "Automatyczna publikacja wpisów i grafik AI"
           
+          # 4. Wysyłamy zmiany na GitHub
           git push
