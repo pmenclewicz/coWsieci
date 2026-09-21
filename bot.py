@@ -39,35 +39,39 @@ def get_manual_keywords():
             return keywords
     return []
 
-def get_top_trend_data():
+def get_top_trends_list():
     url = "https://trends.google.pl/trending/rss?geo=PL"
     req = urllib.request.Request(
         url, 
         headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     )
     
+    trends = []
     try:
         with urllib.request.urlopen(req) as response:
             xml_data = response.read()
             root = ET.fromstring(xml_data)
             
-            first_item = root.find('.//item')
-            if first_item is not None:
-                title = first_item.find('title').text if first_item.find('title') is not None else ""
-                description = first_item.find('description').text if first_item.find('description') is not None else ""
+            # Pobieramy kilka pierwszych trendów (np. 5) zamiast tylko jednego
+            for item in root.findall('.//item')[:5]:
+                title = item.find('title').text if item.find('title') is not None else ""
+                description = item.find('description').text if item.find('description') is not None else ""
                 
                 news_titles = []
-                for news in first_item.findall('.//{https://trends.google.com/trending/rss}news_item'):
+                for news in item.findall('{https://trends.google.com/trending/rss}news_item'):
                     news_title = news.find('{https://trends.google.com/trending/rss}news_item_title')
                     if news_title is not None and news_title.text:
                         news_titles.append(news_title.text)
                 
-                context_str = f"Słowo kluczowe: {title}\nOpis sytuacji: {description}\nNagłówki wiadomości: {', '.join(news_titles)}"
-                return title.strip(), context_str
+                trends.append({
+                    "keyword": title.strip(),
+                    "description": description.strip(),
+                    "news": news_titles
+                })
+        return trends
     except Exception as e:
         print(f"Błąd podczas pobierania danych z Google Trends: {e}")
-        
-    raise Exception("Nie udało się pobrać aktualnego trendu z kanału RSS Google Trends.")
+        return []
 
 def generate_article_seo(keyword, context_data=""):
     prompt = f"""
@@ -102,7 +106,7 @@ def generate_article_seo(keyword, context_data=""):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model='gemini-3.6-flash',
+                model='gemini-2.5-flash',
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
@@ -173,7 +177,6 @@ def download_pexels_image(keyword, output_filename):
         return False
         
     try:
-        # Bierzemy max 2 słowa, aby wyszukiwanie na giełdzie zdjęć było skuteczniejsze
         search_query = " ".join(keyword.split()[:2])
         encoded_query = urllib.parse.quote(search_query)
         url = f"https://api.pexels.com/v1/search?query={encoded_query}&per_page=1&orientation=landscape"
@@ -193,7 +196,6 @@ def download_pexels_image(keyword, output_filename):
                 if img.mode != 'RGB':
                     img = img.convert('RGB')
                 
-                # Optymalizujemy wielkość jak przy AI, by zaoszczędzić miejsce i przyspieszyć stronę
                 img.thumbnail((600, 337))
                 img.save(output_filename, "JPEG", quality=70, optimize=True)
                 
@@ -215,7 +217,6 @@ def save_html_page(keyword, article_html, meta_desc, image_prompt):
     
     page_url = f"{BASE_URL}/{filename}"
     
-    # Proces wyboru obrazka:
     image_caption = "Grafika wygenerowana przez sztuczną inteligencję (AI) na potrzeby artykułu."
     
     success = generate_ai_image(image_prompt, image_filename)
@@ -395,10 +396,34 @@ if __name__ == "__main__":
             article_html, meta_desc, image_prompt = generate_article_seo(kw)
             save_html_page(kw, article_html, meta_desc, image_prompt)
     else:
-        print("Kolejka ręczna jest pusta. Pobieranie automatycznego trendu z Google Trends...")
-        keyword, context_data = get_top_trend_data()
-        print(f"Pobrano temat z Google: {keyword}")
-        article_html, meta_desc, image_prompt = generate_article_seo(keyword, context_data)
-        save_html_page(keyword, article_html, meta_desc, image_prompt)
+        print("Kolejka ręczna jest pusta. Pobieranie listy trendów z Google Trends...")
+        trends = get_top_trends_list()
         
+        if trends:
+            prompt_selection = "Oto lista dzisiejszych trendów z Google w Polsce:\n"
+            for i, t in enumerate(trends):
+                prompt_selection += f"{i+1}. Temat: {t['keyword']} | Opis: {t['description']} | Powiązane newsy: {', '.join(t['news'])}\n"
+            
+            prompt_selection += "\nWybierz z tej listy jeden, najbardziej konkretny i interesujący temat pod kątem artykułu informacyjnego (SEO). Zwróć WYŁĄCZNIE wybrane słowo kluczowe / tytuł tematu, bez żadnego dodatkowego tekstu."
+            
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt_selection
+            )
+            selected_keyword = response.text.strip().replace('"', '').replace("'", "")
+            
+            context_data = ""
+            for t in trends:
+                if t['keyword'].lower() in selected_keyword.lower() or selected_keyword.lower() in t['keyword'].lower():
+                    context_data = f"Słowo kluczowe: {t['keyword']}\nOpis: {t['description']}\nNagłówki: {', '.join(t['news'])}"
+                    break
+            if not context_data:
+                context_data = f"Słowo kluczowe: {selected_keyword}"
+
+            print(f"Gemini wybrał najtrafniejszy temat z Google: {selected_keyword}")
+            article_html, meta_desc, image_prompt = generate_article_seo(selected_keyword, context_data)
+            save_html_page(selected_keyword, article_html, meta_desc, image_prompt)
+        else:
+            print("Nie udało się pobrać trendów z Google Trends.")
+            
     print("Zakończono pracę bota.")
