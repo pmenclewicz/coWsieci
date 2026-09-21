@@ -11,6 +11,15 @@ from PIL import Image
 from google import genai
 from google.genai import types
 
+# ==========================================
+# KONFIGURACJA BOTa
+# ==========================================
+# Liczba dni, po których starsze artykuły będą usuwane. 
+# Jeśli ustawisz np. 30, to artykuły starsze niż 30 dni znikną z dysku i indexu.
+# Ustaw na 0 lub None, jeśli chcesz wyłączyć całkowicie automatyczne czyszczenie.
+DELETE_OLDER_THAN_DAYS = 30 
+# ==========================================
+
 # Konfiguracja API i środowiska
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
@@ -27,6 +36,79 @@ def slugify(text):
     text = re.sub(r'[^a-z0-9\s-]', '', text)
     text = re.sub(r'[\s-]+', '-', text).strip('-')
     return text or "article"
+
+def cleanup_old_articles():
+    if not DELETE_OLDER_THAN_DAYS or DELETE_OLDER_THAN_DAYS <= 0:
+        return
+
+    print(f"Sprawdzanie i usuwanie artykułów starszych niż {DELETE_OLDER_THAN_DAYS} dni...")
+    now = time.time()
+    cutoff_time = now - (DELETE_OLDER_THAN_DAYS * 86400) # 86400 sekund w dniu
+    
+    deleted_filenames = []
+
+    # Szukamy plików HTML w folderu (poza index.html)
+    for filename in os.listdir("."):
+        if filename.endswith(".html") and filename != "index.html":
+            file_path = os.path.join(".", filename)
+            file_mtime = os.path.getmtime(file_path)
+            
+            if file_mtime < cutoff_time:
+                try:
+                    # 1. Usuwamy plik HTML artykułu
+                    os.remove(file_path)
+                    deleted_filenames.append(filename)
+                    print(f"Usunięto stary artykuł: {filename}")
+                    
+                    # 2. Próbujemy usunąć powiązany obrazek .jpg (jeśli istnieje)
+                    base_name = os.path.splitext(filename)[0]
+                    img_path = f"{base_name}.jpg"
+                    if os.path.exists(img_path):
+                        os.remove(img_path)
+                        print(f"Usunięto powiązany obrazek: {img_path}")
+                        
+                except Exception as e:
+                    print(f"Błąd podczas usuwania pliku {filename}: {e}")
+
+    # Jeśli coś usunięto, musimy zaktualizować index.html oraz sitemap.xml
+    if deleted_filenames:
+        update_index_after_deletion(deleted_filenames)
+        update_sitemap_after_deletion(deleted_filenames)
+
+def update_index_after_deletion(deleted_filenames):
+    index_file = "index.html"
+    if not os.path.exists(index_file):
+        return
+
+    with open(index_file, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Usuwamy wpisy artykułów z listy w index.html na podstawie nazwy pliku
+    for filename in deleted_filenames:
+        # Wzorzec dopasowujący cały blok <li class="article-item"> zawierający odnośnik do usuwanego pliku
+        pattern = rf'<li class="article-item">.*?href="{filename}".*?</li>\s*'
+        content = re.sub(pattern, '', content, flags=re.DOTALL)
+
+    with open(index_file, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("Zaktualizowano plik index.html (usunięto wpisy skasowanych artykułów).")
+
+def update_sitemap_after_deletion(deleted_filenames):
+    sitemap_file = "sitemap.xml"
+    if not os.path.exists(sitemap_file):
+        return
+
+    with open(sitemap_file, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    for filename in deleted_filenames:
+        url_to_remove = f"{BASE_URL}/{filename}"
+        pattern = rf'  <url>\s*<loc>{re.escape(url_to_remove)}</loc>.*?</url>\s*'
+        content = re.sub(pattern, '', content, flags=re.DOTALL)
+
+    with open(sitemap_file, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("Zaktualizowano plik sitemap.xml.")
 
 def get_manual_keywords():
     file_path = "manual_keywords.txt"
@@ -52,7 +134,6 @@ def get_top_trends_list():
             xml_data = response.read()
             root = ET.fromstring(xml_data)
             
-            # Pobieramy kilka pierwszych trendów (np. 5) zamiast tylko jednego
             for item in root.findall('.//item')[:5]:
                 title = item.find('title').text if item.find('title') is not None else ""
                 description = item.find('description').text if item.find('description') is not None else ""
@@ -387,6 +468,10 @@ def update_sitemap(filename, date_str):
                 f.write(updated_content)
 
 if __name__ == "__main__":
+    # 1. Najpierw uruchamiamy czyszczenie starych artykułów (jeśli włączone w konfiguracji)
+    cleanup_old_articles()
+
+    # 2. Następnie standardowa obsługa generowania nowego artykułu
     manual_keywords = get_manual_keywords()
     
     if manual_keywords:
