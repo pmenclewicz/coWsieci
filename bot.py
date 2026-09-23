@@ -17,7 +17,7 @@ from google.genai import types
 # Liczba dni, po których starsze artykuły będą usuwane. 
 # Jeśli ustawisz np. 30, to artykuły starsze niż 30 dni znikną z dysku i indexu.
 # Ustaw na 0 lub None, jeśli chcesz wyłączyć całkowicie automatyczne czyszczenie.
-DELETE_OLDER_THAN_DAYS = 30 
+DELETE_OLDER_THAN_DAYS = 2
 # ==========================================
 
 # Konfiguracja API i środowiska
