@@ -26,7 +26,7 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "pmenclewicz/szkola")
-BASE_URL = "https://cowsieci.pl"
+BASE_URL = "[https://cowsieci.pl](https://cowsieci.pl)"
 
 def slugify(text):
     text = text.lower()
@@ -116,7 +116,7 @@ def get_manual_keywords():
     return []
 
 def get_top_trends_list():
-    url = "https://trends.google.pl/trending/rss?geo=PL"
+    url = "[https://trends.google.pl/trending/rss?geo=PL](https://trends.google.pl/trending/rss?geo=PL)"
     req = urllib.request.Request(
         url, 
         headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
@@ -139,8 +139,8 @@ def get_top_trends_list():
                     continue
                 
                 news_titles = []
-                for news in item.findall('{https://trends.google.com/trending/rss}news_item'):
-                    news_title = news.find('{https://trends.google.com/trending/rss}news_item_title')
+                for news in item.findall('{[https://trends.google.com/trending/rss](https://trends.google.com/trending/rss)}news_item'):
+                    news_title = news.find('{[https://trends.google.com/trending/rss](https://trends.google.com/trending/rss)}news_item_title')
                     if news_title is not None and news_title.text:
                         news_titles.append(news_title.text.strip())
                 
@@ -203,4 +203,4 @@ def generate_article_seo(keyword, context_data=""):
             else:
                 raise e
     
-    raw_text = response.text.replace("```html", "").replace("
+    raw_text = response.text.replace("
