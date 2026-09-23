@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 
 # ==========================================
-# KONFIGURACJA BOTa
+# KONFIGURACJA BOTA
 # ==========================================
 # Liczba dni, po których starsze artykuły będą usuwane. 
 # Jeśli ustawisz np. 30, to artykuły starsze niż 30 dni znikną z dysku i indexu.
@@ -47,7 +47,6 @@ def cleanup_old_articles():
     
     deleted_filenames = []
 
-    # Szukamy plików HTML w folderu (poza index.html)
     for filename in os.listdir("."):
         if filename.endswith(".html") and filename != "index.html":
             file_path = os.path.join(".", filename)
@@ -55,12 +54,10 @@ def cleanup_old_articles():
             
             if file_mtime < cutoff_time:
                 try:
-                    # 1. Usuwamy plik HTML artykułu
                     os.remove(file_path)
                     deleted_filenames.append(filename)
                     print(f"Usunięto stary artykuł: {filename}")
                     
-                    # 2. Próbujemy usunąć powiązany obrazek .jpg (jeśli istnieje)
                     base_name = os.path.splitext(filename)[0]
                     img_path = f"{base_name}.jpg"
                     if os.path.exists(img_path):
@@ -70,7 +67,6 @@ def cleanup_old_articles():
                 except Exception as e:
                     print(f"Błąd podczas usuwania pliku {filename}: {e}")
 
-    # Jeśli coś usunięto, musimy zaktualizować index.html oraz sitemap.xml
     if deleted_filenames:
         update_index_after_deletion(deleted_filenames)
         update_sitemap_after_deletion(deleted_filenames)
@@ -83,9 +79,7 @@ def update_index_after_deletion(deleted_filenames):
     with open(index_file, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Usuwamy wpisy artykułów z listy w index.html na podstawie nazwy pliku
     for filename in deleted_filenames:
-        # Wzorzec dopasowujący cały blok <li class="article-item"> zawierający odnośnik do usuwanego pliku
         pattern = rf'<li class="article-item">.*?href="{filename}".*?</li>\s*'
         content = re.sub(pattern, '', content, flags=re.DOTALL)
 
@@ -468,10 +462,10 @@ def update_sitemap(filename, date_str):
                 f.write(updated_content)
 
 if __name__ == "__main__":
-    # 1. Najpierw uruchamiamy czyszczenie starych artykułów (jeśli włączone w konfiguracji)
+    # 1. Czyszczenie starych artykułów na starcie
     cleanup_old_articles()
 
-    # 2. Następnie standardowa obsługa generowania nowego artykułu
+    # 2. Standardowa obsługa generowania nowego artykułu
     manual_keywords = get_manual_keywords()
     
     if manual_keywords:
