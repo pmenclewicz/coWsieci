@@ -38,14 +38,16 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 1. Najpierw pobieramy najnowsze zmiany z repozytorium (z rebase)
+          # Pobranie najnowszych zmian z repozytorium
           git pull --rebase origin main || echo "Brak zmian do pobrania lub pominięto"
           
-          # 2. Dodajemy wygenerowane pliki
-          git add index.html sitemap.xml manual_keywords.txt *.html *.jpg
+          # Bezpieczne dodanie wszystkich zmian (nowe, zmodyfikowane i usunięte pliki)
+          git add -A
           
-          # 3. Sprawdzamy czy są jakiekolwiek zmiany do zatwierdzenia
-          git diff --staged --quiet || git commit -m "Automatyczna publikacja wpisów i grafik AI"
+          # Sprawdzenie czy są zmiany do zatwierdzenia i commit
+          git diff --staged --quiet || git commit -m "Automatyczna publikacja, porządki i aktualizacja wpisów"
           
-          # 4. Wysyłamy zmiany na GitHub
+          # Wysłanie zmian na GitHub
           git push
+          
+  
