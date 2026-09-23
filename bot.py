@@ -203,4 +203,6 @@ def generate_article_seo(keyword, context_data=""):
             else:
                 raise e
     
-    raw_text = response.text.replace("```html", "").replace("
+    raw_text = response.text
+    raw_text = raw_text.replace("```html", "")
+    raw_text = raw_text.replace("
