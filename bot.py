@@ -187,7 +187,7 @@ def generate_article_seo(keyword, context_data=""):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.6-flash',
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
@@ -498,7 +498,7 @@ if __name__ == "__main__":
             prompt_selection += "\nWybierz z tej listy jeden, najbardziej konkretny i interesujący temat pod kątem artykułu informacyjnego (SEO). Zwróć WYŁĄCZNIE wybrane słowo kluczowe / tytuł tematu, bez żadnego dodatkowego tekstu."
             
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.6-flash',
                 contents=prompt_selection
             )
             selected_keyword = response.text.strip().replace('"', '').replace("'", "")
