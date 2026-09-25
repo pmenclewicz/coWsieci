@@ -23,7 +23,8 @@ DELETE_OLDER_THAN_DAYS = 2
 # Konfiguracja API i środowiska
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
-client = genai.Client(api_key=GEMINI_API_KEY)
+
+client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "pmenclewicz/szkola")
 BASE_URL = "https://cowsieci.pl"
@@ -155,6 +156,9 @@ def get_top_trends_list():
         return []
 
 def generate_article_seo(keyword, context_data=""):
+    if not client:
+        raise ValueError("Brak GEMINI_API_KEY w zmiennych środowiskowych.")
+
     prompt = f"""
     Jesteś ekspertem SEO i dziennikarzem serwisu informacyjnego 'Co w Sieci'.
     
@@ -187,7 +191,7 @@ def generate_article_seo(keyword, context_data=""):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model='gemini-3.6-flash',
+                model='gemini-2.5-flash',
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
@@ -195,18 +199,16 @@ def generate_article_seo(keyword, context_data=""):
             )
             break
         except Exception as e:
-            if "503" in str(e) or "UNAVAILABLE" in str(e):
-                print(f"Serwery Google są przeciążone (503). Próba {attempt + 1}/{max_retries}. Czekam 15 sekund...")
+            print(f"Błąd wywołania Gemini API (próba {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                print("Serwer przeciążony lub niedostępny (np. 503). Czekam 15 sekund...")
                 time.sleep(15)
-                if attempt == max_retries - 1:
-                    raise e
             else:
                 raise e
     
-    # Kuloopodorne usuwanie znaczników markdown - generujemy kod znaku zamiast go wpisywać
     b_ticks = chr(96) + chr(96) + chr(96) 
     
-    raw_text = response.text
+    raw_text = response.text if response else ""
     raw_text = raw_text.replace(b_ticks + "html", "")
     raw_text = raw_text.replace(b_ticks, "")
     raw_text = raw_text.strip()
@@ -230,10 +232,14 @@ def generate_article_seo(keyword, context_data=""):
     return article_html, meta_desc, image_prompt
 
 def generate_ai_image(image_prompt, output_filename):
+    if not client:
+        print("Brak GEMINI_API_KEY. Pomijam generowanie obrazu przez AI.")
+        return False
+
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            print(f"Generowanie obrazu AI z promptem: {image_prompt}")
+            print(f"Generowanie obrazu AI (próba {attempt + 1}/{max_retries})...")
             result = client.models.generate_images(
                 model='imagen-3.0-generate-002',
                 prompt=image_prompt,
@@ -250,12 +256,12 @@ def generate_ai_image(image_prompt, output_filename):
                 
             return True
         except Exception as e:
-            if "503" in str(e) or "UNAVAILABLE" in str(e):
-                print(f"Przeciążenie serwera podczas generowania grafiki. Próba {attempt + 1}/{max_retries}. Czekam 15 sekund...")
+            print(f"Błąd wywołania Imagen (próba {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                print("Serwer AI przeciążony (503 UNAVAILABLE). Czekam 15 sekund przed kolejną próbą...")
                 time.sleep(15)
-            else:
-                print(f"Nie udało się wygenerować obrazu przez AI: {e}")
-                return False
+
+    print("Google AI nie wygenerowało obrazu z powodu przeciążenia. Przechodzę do zapasowego źródła.")
     return False
 
 def download_pexels_image(keyword, output_filename):
@@ -473,6 +479,32 @@ def update_sitemap(filename, date_str):
             with open(sitemap_file, "w", encoding="utf-8") as f:
                 f.write(updated_content)
 
+def select_trend_keyword(trends):
+    if not client:
+        return trends[0]['keyword'] if trends else None
+
+    prompt_selection = "Oto lista dzisiejszych trendów z Google w Polsce:\n"
+    for i, t in enumerate(trends):
+        prompt_selection += f"{i+1}. Temat: {t['keyword']} | Opis: {t['description']} | Powiązane newsy: {', '.join(t['news'])}\n"
+    
+    prompt_selection += "\nWybierz z tej listy jeden, najbardziej konkretny i interesujący temat pod kątem artykułu informacyjnego (SEO). Zwróć WYŁĄCZNIE wybrane słowo kluczowe / tytuł tematu, bez żadnego dodatkowego tekstu."
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt_selection
+            )
+            return response.text.strip().replace('"', '').replace("'", "")
+        except Exception as e:
+            print(f"Błąd Gemini podczas wyboru tematu z trendów (próba {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(15)
+
+    print("Nie udało się wybrać tematu przez Gemini (przeciążenie). Wybieram pierwszy trend domyślnie.")
+    return trends[0]['keyword']
+
 if __name__ == "__main__":
     # 1. Czyszczenie starych artykułów na starcie
     cleanup_old_articles()
@@ -491,17 +523,7 @@ if __name__ == "__main__":
         trends = get_top_trends_list()
         
         if trends:
-            prompt_selection = "Oto lista dzisiejszych trendów z Google w Polsce:\n"
-            for i, t in enumerate(trends):
-                prompt_selection += f"{i+1}. Temat: {t['keyword']} | Opis: {t['description']} | Powiązane newsy: {', '.join(t['news'])}\n"
-            
-            prompt_selection += "\nWybierz z tej listy jeden, najbardziej konkretny i interesujący temat pod kątem artykułu informacyjnego (SEO). Zwróć WYŁĄCZNIE wybrane słowo kluczowe / tytuł tematu, bez żadnego dodatkowego tekstu."
-            
-            response = client.models.generate_content(
-                model='gemini-3.6-flash',
-                contents=prompt_selection
-            )
-            selected_keyword = response.text.strip().replace('"', '').replace("'", "")
+            selected_keyword = select_trend_keyword(trends)
             
             context_data = ""
             for t in trends:
@@ -511,7 +533,7 @@ if __name__ == "__main__":
             if not context_data:
                 context_data = f"Słowo kluczowe: {selected_keyword}"
 
-            print(f"Gemini wybrał najtrafniejszy temat z Google: {selected_keyword}")
+            print(f"Wybrany temat z Google: {selected_keyword}")
             article_html, meta_desc, image_prompt = generate_article_seo(selected_keyword, context_data)
             save_html_page(selected_keyword, article_html, meta_desc, image_prompt)
         else:
