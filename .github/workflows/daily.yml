@@ -2,9 +2,13 @@ name: Automatic Trend Publisher
 
 on:
   schedule:
-# Uruchamiaj co 4 godziny
-    - cron: '0 * * * *'
+    # Uruchamiaj co 4 godziny
+    - cron: '0 */4 * * *'
   workflow_dispatch:      # Pozwala uruchomić bota ręcznie
+
+concurrency:
+  group: trend-publisher
+  cancel-in-progress: false
 
 jobs:
   build-and-publish:
@@ -27,6 +31,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Configure Git and pull latest changes
+        run: |
+          git config --global user.name "coWsieci Bot"
+          git config --global user.email "bot@coWsieci.pl"
+          git pull origin main
+
       - name: Run Trend Bot
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -35,12 +45,10 @@ jobs:
 
       - name: Commit and Push changes
         run: |
-          git config --global user.name "coWsieci Bot"
-          git config --global user.email "bot@coWsieci.pl"
           git add .
           git commit -m "Auto-generated daily trend page" || exit 0
           
-          # Pobranie najnowszych zmian z serwera przed wysłaniem plików
-          git pull --rebase origin main
+          # Pobranie ewentualnych zmian z serwera z automatycznym rozwiązywaniem konfliktów
+          git pull origin main --rebase -X theirs
           
-          git push
+          git push origin main
