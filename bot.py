@@ -14,7 +14,7 @@ from google.genai import types
 # ==========================================
 # KONFIGURACJA BOTA
 # ==========================================
-# Liczba dni, po których starsze artykuły będą usuwane. 
+# Liczba dni, po których starsze artykuły będą usuwane.
 # Jeśli ustawisz np. 30, to artykuły starsze niż 30 dni znikną z dysku i indexu.
 # Ustaw na 0 lub None, jeśli chcesz wyłączyć całkowicie automatyczne czyszczenie.
 DELETE_OLDER_THAN_DAYS = 2 
@@ -38,22 +38,45 @@ def slugify(text):
     text = re.sub(r'[\s-]+', '-', text).strip('-')
     return text or "article"
 
+def get_article_date(file_path):
+    """Odczytuje faktyczną datę publikacji z treści pliku HTML."""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            # Szukamy daty w tagu JSON-LD ("datePublished": "2026-03-29...")
+            match = re.search(r'"datePublished":\s*"(\d{4}-\d{2}-\d{2})', content)
+            if not match:
+                # Zapasowo szukamy w tekście "Opublikowano: 2026-03-29"
+                match = re.search(r'Opublikowano:\s*(\d{4}-\d{2}-\d{2})', content)
+            
+            if match:
+                date_str = match.group(1)
+                dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+                return dt.timestamp()
+    except Exception as e:
+        print(f"Błąd odczytu daty z pliku {file_path}: {e}")
+    
+    # Domyślny fallback do daty modyfikacji pliku z OS
+    return os.path.getmtime(file_path)
+
 def cleanup_old_articles():
     if not DELETE_OLDER_THAN_DAYS or DELETE_OLDER_THAN_DAYS <= 0:
         return
 
     print(f"Sprawdzanie i usuwanie artykułów starszych niż {DELETE_OLDER_THAN_DAYS} dni...")
     now = time.time()
-    cutoff_time = now - (DELETE_OLDER_THAN_DAYS * 86400) # 86400 sekund w dniu
+    cutoff_time = now - (DELETE_OLDER_THAN_DAYS * 86400) # 86400 sekund = 1 dzień
     
     deleted_filenames = []
 
     for filename in os.listdir("."):
         if filename.endswith(".html") and filename != "index.html":
             file_path = os.path.join(".", filename)
-            file_mtime = os.path.getmtime(file_path)
             
-            if file_mtime < cutoff_time:
+            # Odczytujemy faktyczną datę z wnętrza dokumentu
+            file_time = get_article_date(file_path)
+            
+            if file_time < cutoff_time:
                 try:
                     os.remove(file_path)
                     deleted_filenames.append(filename)
@@ -98,12 +121,12 @@ def update_sitemap_after_deletion(deleted_filenames):
 
     for filename in deleted_filenames:
         url_to_remove = f"{BASE_URL}/{filename}"
-        pattern = rf'  <url>\s*<loc>{re.escape(url_to_remove)}</loc>.*?</url>\s*'
+        pattern = rf'\s*<url>\s*<loc>{re.escape(url_to_remove)}</loc>.*?</url>'
         content = re.sub(pattern, '', content, flags=re.DOTALL)
 
     with open(sitemap_file, "w", encoding="utf-8") as f:
         f.write(content)
-    print("Zaktualizowano plik sitemap.xml.")
+    print("Zaktualizowano plik sitemap.xml (usunięto wpisy skasowanych artykułów).")
 
 def get_manual_keywords():
     file_path = "manual_keywords.txt"
@@ -174,7 +197,7 @@ def generate_article_seo(keyword, context_data=""):
     ZASADY SEO I GRAFIKI:
     1. Tytuł (H1) musi być chwytliwy i celować w słowa długiego ogona.
     2. Opis Meta Description (maksymalnie 160 znaków).
-    3. IMAGE_PROMPT musi być BARDZO DOSŁOWNYM i KONKRETNYM opisem wizualnym po angielsku. Skup się wyłącznie na fizycznych obiektach, ludziach, akcji i scenerii. ZABRONIONE jest używanie metafor, symboli i abstrakcyjnych koncepcji (np. zamiast "kryzys finansowy" opisz "wykresy giełdowe spadające w dół na ekranie komputera" lub "zmartwiony biznesmen"). Dodaj na końcu: "photorealistic, 4k, news style editorial photography, neutral lighting, NO text, NO letters, NO words".
+    3. IMAGE_PROMPT musi być BARDZO DOSŁOWNYM i KONKRETNYM opisem wizualnym po angielsku. Skup się wyłącznie na fizycznych obiektach, ludziach, akcji i scenerii. ZABRONIONE jest używanie metafor, symboli i abstrakcyjnych koncepcji. Dodaj na końcu: "photorealistic, 4k, news style editorial photography, neutral lighting, NO text, NO letters, NO words".
     
     STRUKTURA WYJŚCIOWA (Użyj dokładnie tych separatorów):
     ---META_DESCRIPTION---
@@ -191,7 +214,7 @@ def generate_article_seo(keyword, context_data=""):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model='gemini-3.6-flash',
+                model='gemini-3.5-flash',
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
