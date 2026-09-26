@@ -14,13 +14,9 @@ from google.genai import types
 # ==========================================
 # KONFIGURACJA BOTA
 # ==========================================
-# Liczba dni, po których starsze artykuły będą usuwane.
-# Jeśli ustawisz np. 30, to artykuły starsze niż 30 dni znikną z dysku i indexu.
-# Ustaw na 0 lub None, jeśli chcesz wyłączyć całkowicie automatyczne czyszczenie.
 DELETE_OLDER_THAN_DAYS = 2 
 # ==========================================
 
-# Konfiguracja API i środowiska
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 
@@ -39,14 +35,11 @@ def slugify(text):
     return text or "article"
 
 def get_article_date(file_path):
-    """Odczytuje faktyczną datę publikacji z treści pliku HTML."""
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
-            # Szukamy daty w tagu JSON-LD ("datePublished": "2026-03-29...")
             match = re.search(r'"datePublished":\s*"(\d{4}-\d{2}-\d{2})', content)
             if not match:
-                # Zapasowo szukamy w tekście "Opublikowano: 2026-03-29"
                 match = re.search(r'Opublikowano:\s*(\d{4}-\d{2}-\d{2})', content)
             
             if match:
@@ -56,7 +49,6 @@ def get_article_date(file_path):
     except Exception as e:
         print(f"Błąd odczytu daty z pliku {file_path}: {e}")
     
-    # Domyślny fallback do daty modyfikacji pliku z OS
     return os.path.getmtime(file_path)
 
 def cleanup_old_articles():
@@ -65,15 +57,13 @@ def cleanup_old_articles():
 
     print(f"Sprawdzanie i usuwanie artykułów starszych niż {DELETE_OLDER_THAN_DAYS} dni...")
     now = time.time()
-    cutoff_time = now - (DELETE_OLDER_THAN_DAYS * 86400) # 86400 sekund = 1 dzień
+    cutoff_time = now - (DELETE_OLDER_THAN_DAYS * 86400)
     
     deleted_filenames = []
 
     for filename in os.listdir("."):
         if filename.endswith(".html") and filename != "index.html":
             file_path = os.path.join(".", filename)
-            
-            # Odczytujemy faktyczną datę z wnętrza dokumentu
             file_time = get_article_date(file_path)
             
             if file_time < cutoff_time:
@@ -109,7 +99,6 @@ def update_index_after_deletion(deleted_filenames):
 
     with open(index_file, "w", encoding="utf-8") as f:
         f.write(content)
-    print("Zaktualizowano plik index.html (usunięto wpisy skasowanych artykułów).")
 
 def update_sitemap_after_deletion(deleted_filenames):
     sitemap_file = "sitemap.xml"
@@ -126,7 +115,6 @@ def update_sitemap_after_deletion(deleted_filenames):
 
     with open(sitemap_file, "w", encoding="utf-8") as f:
         f.write(content)
-    print("Zaktualizowano plik sitemap.xml (usunięto wpisy skasowanych artykułów).")
 
 def get_manual_keywords():
     file_path = "manual_keywords.txt"
@@ -192,18 +180,13 @@ def generate_article_seo(keyword, context_data=""):
     {context_data if context_data else "Brak dodatkowego kontekstu - napisz wyczerpujący artykuł na temat podanej frazy."}
     
     TWOJE ZADANIE:
-    Napisz wyczerpujący, zoptymalizowany pod SEO artykuł oraz przygotuj profesjonalny prompt po angielsku do wygenerowania realistycznego zdjęcia nagłówkowego (editorial photo).
-    
-    ZASADY SEO I GRAFIKI:
-    1. Tytuł (H1) musi być chwytliwy i celować w słowa długiego ogona.
-    2. Opis Meta Description (maksymalnie 160 znaków).
-    3. IMAGE_PROMPT musi być BARDZO DOSŁOWNYM i KONKRETNYM opisem wizualnym po angielsku. Skup się wyłącznie na fizycznych obiektach, ludziach, akcji i scenerii. ZABRONIONE jest używanie metafor, symboli i abstrakcyjnych koncepcji. Dodaj na końcu: "photorealistic, 4k, news style editorial photography, neutral lighting, NO text, NO letters, NO words".
+    Napisz wyczerpujący, zoptymalizowany pod SEO artykuł oraz przygotuj profesjonalny prompt po angielsku do wygenerowania realistycznego zdjęcia nagłówkowego.
     
     STRUKTURA WYJŚCIOWA (Użyj dokładnie tych separatorów):
     ---META_DESCRIPTION---
     [Krótki opis do 160 znaków]
     ---IMAGE_PROMPT---
-    [Szczegółowy opis zdjęcia po angielsku]
+    [Szczegółowy opis zdjęcia po angielsku, max 20 słów, np: news editorial photo of cityscape with modern buildings]
     ---ARTICLE---
     [Kod HTML artykułu: H1, wstęp, 2-3 sekcje H2 ze szczegółami, sekcja H2 z FAQ z 3 pytaniami]
     """
@@ -224,20 +207,16 @@ def generate_article_seo(keyword, context_data=""):
         except Exception as e:
             print(f"Błąd wywołania Gemini API (próba {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
-                print("Serwer przeciążony lub niedostępny (np. 503). Czekam 15 sekund...")
                 time.sleep(15)
             else:
                 raise e
     
     b_ticks = chr(96) + chr(96) + chr(96) 
-    
     raw_text = response.text if response else ""
-    raw_text = raw_text.replace(b_ticks + "html", "")
-    raw_text = raw_text.replace(b_ticks, "")
-    raw_text = raw_text.strip()
+    raw_text = raw_text.replace(b_ticks + "html", "").replace(b_ticks, "").strip()
     
     meta_desc = f"Aktualne informacje i szczegóły wydarzenia: {keyword}."
-    image_prompt = f"A literal and realistic news editorial photography depicting the physical scene of: {keyword}. Photorealistic, 4k, completely textless, no letters, no words."
+    image_prompt = f"editorial news photo about {keyword}"
     article_html = raw_text
     
     try:
@@ -254,75 +233,106 @@ def generate_article_seo(keyword, context_data=""):
         
     return article_html, meta_desc, image_prompt
 
+# --- MODUŁY GENEROWANIA I POBIERANIA GRAFIKI ---
+
 def generate_ai_image(image_prompt, output_filename):
     if not client:
-        print("Brak GEMINI_API_KEY. Pomijam generowanie obrazu przez AI.")
         return False
-
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            print(f"Generowanie obrazu AI (próba {attempt + 1}/{max_retries})...")
-            result = client.models.generate_images(
-                model='imagen-3.0-generate-002',
-                prompt=image_prompt,
-                config=types.GenerateImagesConfig(
-                    number_of_images=1,
-                    aspect_ratio="16:9",
-                    output_mime_type="image/jpeg"
-                )
+    try:
+        print("Próba 1: Generowanie obrazu przez Google Imagen...")
+        result = client.models.generate_images(
+            model='imagen-3.0-generate-002',
+            prompt=image_prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="16:9",
+                output_mime_type="image/jpeg"
             )
-            for generated_image in result.generated_images:
-                img = Image.open(io.BytesIO(generated_image.image.image_bytes))
-                img.thumbnail((600, 337))
-                img.save(output_filename, "JPEG", quality=40, optimize=True)
-                
+        )
+        for generated_image in result.generated_images:
+            img = Image.open(io.BytesIO(generated_image.image.image_bytes))
+            img.thumbnail((600, 337))
+            img.save(output_filename, "JPEG", quality=60, optimize=True)
             return True
-        except Exception as e:
-            print(f"Błąd wywołania Imagen (próba {attempt + 1}/{max_retries}): {e}")
-            if attempt < max_retries - 1:
-                print("Serwer AI przeciążony (503 UNAVAILABLE). Czekam 15 sekund przed kolejną próbą...")
-                time.sleep(15)
-
-    print("Google AI nie wygenerowało obrazu z powodu przeciążenia. Przechodzę do zapasowego źródła.")
+    except Exception as e:
+        print(f"Google Imagen nie powiódł się: {e}")
     return False
 
 def download_pexels_image(keyword, output_filename):
     if not PEXELS_API_KEY:
-        print("Brak klucza PEXELS_API_KEY. Pomijam pobieranie ze stocka.")
         return False
-        
     try:
-        search_query = " ".join(keyword.split()[:2])
+        print("Próba 2: Pobieranie zdjęcia z Pexels...")
+        search_query = " ".join(slugify(keyword).split("-")[:2])
         encoded_query = urllib.parse.quote(search_query)
         url = f"https://api.pexels.com/v1/search?query={encoded_query}&per_page=1&orientation=landscape"
         
         req = urllib.request.Request(url, headers={'Authorization': PEXELS_API_KEY})
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             data = json.loads(response.read().decode('utf-8'))
-            
             if data.get('photos') and len(data['photos']) > 0:
                 image_url = data['photos'][0]['src']['large']
-                
                 img_req = urllib.request.Request(image_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(img_req) as img_res:
-                    img_data = img_res.read()
-                    
-                img = Image.open(io.BytesIO(img_data))
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                
-                img.thumbnail((600, 337))
-                img.save(output_filename, "JPEG", quality=70, optimize=True)
-                
-                print(f"Sukces! Pobrano zdjęcie z Pexels dla: {search_query}")
-                return True
-            else:
-                print(f"Nie znaleziono odpowiedniego zdjęcia na Pexels dla hasła: {search_query}")
+                with urllib.request.urlopen(img_req, timeout=10) as img_res:
+                    img = Image.open(io.BytesIO(img_res.read()))
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    img.thumbnail((600, 337))
+                    img.save(output_filename, "JPEG", quality=70, optimize=True)
+                    return True
     except Exception as e:
-        print(f"Błąd Pexels: {e}")
-        
+        print(f"Pexels nie powiódł się: {e}")
     return False
+
+def download_pollinations_image(image_prompt, output_filename):
+    try:
+        print("Próba 3: Generowanie darmowej grafiki AI (Pollinations)...")
+        clean_prompt = urllib.parse.quote(image_prompt[:100])
+        url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=600&height=337&nologo=true"
+        
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=15) as response:
+            img_bytes = response.read()
+            img = Image.open(io.BytesIO(img_bytes))
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            img.save(output_filename, "JPEG", quality=70, optimize=True)
+            return True
+    except Exception as e:
+        print(f"Pollinations AI nie powiodło się: {e}")
+    return False
+
+def download_fallback_picsum(output_filename):
+    try:
+        print("Próba 4 (Ostateczna): Pobieranie gwarantowanego zdjęcia z Picsum Photos...")
+        url = "https://picsum.photos/600/337"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            img_bytes = response.read()
+            img = Image.open(io.BytesIO(img_bytes))
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            img.save(output_filename, "JPEG", quality=70, optimize=True)
+            return True
+    except Exception as e:
+        print(f"Błąd krytyczny pobierania Picsum: {e}")
+    return False
+
+def process_and_save_image(keyword, image_prompt, image_filename):
+    """Próbuje po kolei wszystkich źródeł, dopóki plik .jpg nie zapisze się fizycznie na dysku."""
+    if generate_ai_image(image_prompt, image_filename):
+        return "Grafika wygenerowana przez Google AI."
+    
+    if download_pexels_image(keyword, image_filename):
+        return "Zdjęcie ilustracyjne z serwisu Pexels."
+        
+    if download_pollinations_image(image_prompt, image_filename):
+        return "Grafika wygenerowana przez sztuczną inteligencję (AI)."
+        
+    if download_fallback_picsum(image_filename):
+        return "Zdjęcie ilustracyjne."
+        
+    return ""
 
 def save_html_page(keyword, article_html, meta_desc, image_prompt):
     slug = slugify(keyword)
@@ -333,21 +343,9 @@ def save_html_page(keyword, article_html, meta_desc, image_prompt):
     
     page_url = f"{BASE_URL}/{filename}"
     
-    image_caption = "Grafika wygenerowana przez sztuczną inteligencję (AI) na potrzeby artykułu."
-    
-    success = generate_ai_image(image_prompt, image_filename)
-    if not success:
-        print("Grafika AI nie powiodła się. Próba pobrania z Pexels...")
-        if download_pexels_image(keyword, image_filename):
-            image_caption = "Zdjęcie ilustracyjne pochodzące z darmowej bazy Pexels."
-        else:
-            print("Pexels też nie znalazł. Ustawianie stałego zdjęcia z LoremFlickr...")
-            tags = slug.replace('-', ',')
-            lock_id = sum(ord(c) for c in slug) % 10000
-            image_filename = f"https://loremflickr.com/600/337/{tags}?lock={lock_id}"
-            image_caption = "Zdjęcie ilustracyjne."
-            
-    image_url = f"{BASE_URL}/{image_filename}" if not image_filename.startswith('http') else image_filename
+    # Pobieranie zdjęcia - plik image_filename ZAWSZE zostanie utworzony na dysku
+    image_caption = process_and_save_image(keyword, image_prompt, image_filename)
+    image_url = f"{BASE_URL}/{image_filename}"
 
     h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', article_html, re.IGNORECASE | re.DOTALL)
     page_title = re.sub(r'<[^>]+>', '', h1_match.group(1)).strip() if h1_match else keyword
@@ -402,7 +400,7 @@ def save_html_page(keyword, article_html, meta_desc, image_prompt):
     <header><a href="index.html">Co w Sieci</a></header>
     <div class="meta">Opublikowano: {date_str}</div>
     <div class="featured-image-container">
-        <img src="{image_filename}" alt="{page_title}" class="featured-image" onerror="this.style.display='none'">
+        <img src="{image_filename}" alt="{page_title}" class="featured-image">
         <div class="image-caption">{image_caption}</div>
     </div>
     <main>{article_html}</main>
@@ -525,14 +523,11 @@ def select_trend_keyword(trends):
             if attempt < max_retries - 1:
                 time.sleep(15)
 
-    print("Nie udało się wybrać tematu przez Gemini (przeciążenie). Wybieram pierwszy trend domyślnie.")
     return trends[0]['keyword']
 
 if __name__ == "__main__":
-    # 1. Czyszczenie starych artykułów na starcie
     cleanup_old_articles()
 
-    # 2. Standardowa obsługa generowania nowego artykułu
     manual_keywords = get_manual_keywords()
     
     if manual_keywords:
