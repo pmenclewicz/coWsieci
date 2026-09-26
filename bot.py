@@ -26,8 +26,8 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
-GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "pmenclewicz/szkola")
-BASE_URL = "https://cowsieci.pl"
+GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "pmenclewicz/coWsieci")
+BASE_URL = "https://pmenclewicz.github.io/coWsieci"
 
 def slugify(text):
     text = text.lower()
@@ -191,7 +191,7 @@ def generate_article_seo(keyword, context_data=""):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.6-flash',
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
@@ -493,7 +493,7 @@ def select_trend_keyword(trends):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.5-flash',
                 contents=prompt_selection
             )
             return response.text.strip().replace('"', '').replace("'", "")
