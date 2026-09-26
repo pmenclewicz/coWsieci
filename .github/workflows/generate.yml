@@ -32,22 +32,20 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: python bot.py
-        
+
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # Pobranie najnowszych zmian z repozytorium
-          git pull --rebase origin main || echo "Brak zmian do pobrania lub pominięto"
-          
-          # Bezpieczne dodanie wszystkich zmian (nowe, zmodyfikowane i usunięte pliki)
+          # Indeksowanie wszystkich zmian (nowe pliki, modyfikacje i usunięcia)
           git add -A
           
-          # Sprawdzenie czy są zmiany do zatwierdzenia i commit
-          git diff --staged --quiet || git commit -m "Automatyczna publikacja, porządki i aktualizacja wpisów"
-          
-          # Wysłanie zmian na GitHub
-          git push
-          
-  
+          # Jeśli są jakiekolwiek zmiany, wykonaj commit, pobierz ewentualne nowe zmiany i wyślij
+          if ! git diff --staged --quiet; then
+            git commit -m "Automatyczna publikacja, porządki i aktualizacja wpisów"
+            git pull --rebase origin main
+            git push
+          else
+            echo "Brak nowych zmian do zapisania."
+          fi
