@@ -14,7 +14,7 @@ from google.genai import types
 # ==========================================
 # KONFIGURACJA BOTA
 # ==========================================
-DELETE_OLDER_THAN_DAYS = 2 
+DELETE_OLDER_THAN_DAYS = 7 
 # ==========================================
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
