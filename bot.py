@@ -14,16 +14,14 @@ from google.genai import types
 # ==========================================
 # KONFIGURACJA BOTA
 # ==========================================
-DELETE_OLDER_THAN_DAYS = 7 
+DELETE_OLDER_THAN_DAYS = 2 
+BASE_URL = "https://pmenclewicz.github.io/coWsieci"
 # ==========================================
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
-
-GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "pmenclewicz/coWsieci")
-BASE_URL = "https://pmenclewicz.github.io/coWsieci"
 
 def slugify(text):
     text = text.lower()
@@ -48,7 +46,6 @@ def get_article_date(file_path):
                 return dt.timestamp()
     except Exception as e:
         print(f"Błąd odczytu daty z pliku {file_path}: {e}")
-    
     return os.path.getmtime(file_path)
 
 def cleanup_old_articles():
@@ -58,7 +55,6 @@ def cleanup_old_articles():
     print(f"Sprawdzanie i usuwanie artykułów starszych niż {DELETE_OLDER_THAN_DAYS} dni...")
     now = time.time()
     cutoff_time = now - (DELETE_OLDER_THAN_DAYS * 86400)
-    
     deleted_filenames = []
 
     for filename in os.listdir("."):
@@ -76,8 +72,6 @@ def cleanup_old_articles():
                     img_path = f"{base_name}.jpg"
                     if os.path.exists(img_path):
                         os.remove(img_path)
-                        print(f"Usunięto powiązany obrazek: {img_path}")
-                        
                 except Exception as e:
                     print(f"Błąd podczas usuwania pliku {filename}: {e}")
 
@@ -87,143 +81,115 @@ def cleanup_old_articles():
 
 def update_index_after_deletion(deleted_filenames):
     index_file = "index.html"
-    if not os.path.exists(index_file):
-        return
-
-    with open(index_file, "r", encoding="utf-8") as f:
-        content = f.read()
-
+    if not os.path.exists(index_file): return
+    with open(index_file, "r", encoding="utf-8") as f: content = f.read()
     for filename in deleted_filenames:
         pattern = rf'<li class="article-item">.*?href="{filename}".*?</li>\s*'
         content = re.sub(pattern, '', content, flags=re.DOTALL)
-
-    with open(index_file, "w", encoding="utf-8") as f:
-        f.write(content)
+    with open(index_file, "w", encoding="utf-8") as f: f.write(content)
 
 def update_sitemap_after_deletion(deleted_filenames):
     sitemap_file = "sitemap.xml"
-    if not os.path.exists(sitemap_file):
-        return
-
-    with open(sitemap_file, "r", encoding="utf-8") as f:
-        content = f.read()
-
+    if not os.path.exists(sitemap_file): return
+    with open(sitemap_file, "r", encoding="utf-8") as f: content = f.read()
     for filename in deleted_filenames:
         url_to_remove = f"{BASE_URL}/{filename}"
         pattern = rf'\s*<url>\s*<loc>{re.escape(url_to_remove)}</loc>.*?</url>'
         content = re.sub(pattern, '', content, flags=re.DOTALL)
-
-    with open(sitemap_file, "w", encoding="utf-8") as f:
-        f.write(content)
+    with open(sitemap_file, "w", encoding="utf-8") as f: f.write(content)
 
 def get_manual_keywords():
     file_path = "manual_keywords.txt"
     if os.path.exists(file_path):
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read().strip()
+        with open(file_path, "r", encoding="utf-8") as f: content = f.read().strip()
         if content:
             keywords = [k.strip() for k in content.split(",") if k.strip()]
             open(file_path, "w", encoding="utf-8").close()
             return keywords
     return []
 
-def get_top_trends_list():
-    url = "https://trends.google.pl/trending/rss?geo=PL"
-    req = urllib.request.Request(
-        url, 
-        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-    )
+def get_top_news_list():
+    """Pobiera NAJNOWSZE wiadomości z Google News Polska (znacznie świeższe niż Google Trends)."""
+    url = "https://news.google.com/rss?hl=pl&gl=PL&ceid=PL:pl"
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     
-    trends = []
+    news_items = []
     try:
         with urllib.request.urlopen(req) as response:
             xml_data = response.read()
             root = ET.fromstring(xml_data)
-            
-            for item in root.findall('.//item')[:5]:
-                title_elem = item.find('title')
-                desc_elem = item.find('description')
-                
-                title = title_elem.text.strip() if title_elem is not None and title_elem.text else ""
-                description = desc_elem.text.strip() if desc_elem is not None and desc_elem.text else ""
-                
-                if not title:
-                    continue
-                
-                news_titles = []
-                for news in item.findall('{https://trends.google.com/trending/rss}news_item'):
-                    news_title = news.find('{https://trends.google.com/trending/rss}news_item_title')
-                    if news_title is not None and news_title.text:
-                        news_titles.append(news_title.text.strip())
-                
-                trends.append({
-                    "keyword": title,
-                    "description": description,
-                    "news": news_titles
-                })
-        return trends
+            for item in root.findall('.//item')[:10]:
+                title = item.find('title').text.strip() if item.find('title') is not None else ""
+                if title:
+                    # Czyszczenie tytułu z nazwy źródła (np. "Tytuł newsa - Onet")
+                    clean_title = title.split(" - ")[0]
+                    news_items.append(clean_title)
+        return news_items
     except Exception as e:
-        print(f"Błąd podczas pobierania danych z Google Trends: {e}")
+        print(f"Błąd pobierania Google News: {e}")
         return []
 
-def generate_article_seo(keyword, context_data=""):
+def generate_article_seo(topic):
     if not client:
         raise ValueError("Brak GEMINI_API_KEY w zmiennych środowiskowych.")
 
     prompt = f"""
-    Jesteś ekspertem SEO i dziennikarzem serwisu informacyjnego 'Co w Sieci'.
+    Jesteś profesjonalnym dziennikarzem newsowym. Twój cel to napisać ŚWIEŻY, KONKRETNY i RZETELNY artykuł prasowy na poniższy temat z ostatnich godzin:
     
-    SŁOWO KLUCZOWE / TEMAT:
-    {keyword}
+    TEMAT / NAGŁÓWEK:
+    {topic}
     
-    DANE KONTEKSTOWE:
-    {context_data if context_data else "Brak dodatkowego kontekstu - napisz wyczerpujący artykuł na temat podanej frazy."}
-    
-    TWOJE ZADANIE:
-    Napisz wyczerpujący, zoptymalizowany pod SEO artykuł oraz przygotuj profesjonalny prompt po angielsku do wygenerowania realistycznego zdjęcia nagłówkowego.
-    
+    INSTRUKCJA:
+    1. Użyj narzędzia do przeszukiwania sieci, aby poznać WSZYSTKIE AKTUALNE FAKTY na ten temat. Sprawdź, co dokładnie się stało, kto brał w tym udział, kiedy i jakie są skutki.
+    2. Pisz krótkim, dynamicznym stylem dziennikarskim (jak TVN24, Onet, RMF24).
+    3. BEZWZGLĘDNY ZAKAZ:
+       - Nie używaj zwrotów w stylu "W dzisiejszym świecie...", "Nie da się ukryć...", "Warto zauważyć...".
+       - Nie twórz sztucznych sekcji FAQ.
+       - Nie pisz ogólników. Jeśli brak konkretnych faktów, podaj najważniejsze tło sprawy.
+    4. Zbuduj treść w czystym kodzie HTML (używaj <h1>, <p>, <h2>, <strong>).
+
     STRUKTURA WYJŚCIOWA (Użyj dokładnie tych separatorów):
     ---META_DESCRIPTION---
-    [Krótki opis do 160 znaków]
+    [1 zwięzłe zdanie podsumowujące najważniejszy fakt – max 150 znaków]
     ---IMAGE_PROMPT---
-    [Szczegółowy opis zdjęcia po angielsku, max 20 słów, np: news editorial photo of cityscape with modern buildings]
+    [A realistic editorial news photo describing the core topic in English, e.g. "editorial photo of a press conference in Warsaw, professional lighting, photorealistic, 4k, no text"]
     ---ARTICLE---
-    [Kod HTML artykułu: H1, wstęp, 2-3 sekcje H2 ze szczegółami, sekcja H2 z FAQ z 3 pytaniami]
+    [Kod HTML artykułu: H1 z chwytliwym tytułem, treściwy wstęp z pogrubioną kluczową informacją, 2-3 sekcje H2 szczegółowo opisujące zdarzenie]
     """
+    
+    print(f"Wyszukiwanie aktualnych informacji w sieci dla: {topic}...")
     
     max_retries = 3
     response = None
-    
     for attempt in range(max_retries):
         try:
+            # Włączamy Google Search Grounding - Gemini w czasie rzeczywistym przeszukuje sieć!
             response = client.models.generate_content(
-                model='gemini-3.5-flash',
+                model='gemini-2.5-flash',
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+                    tools=[{"google_search": {}}]
                 )
             )
             break
         except Exception as e:
-            print(f"Błąd wywołania Gemini API (próba {attempt + 1}/{max_retries}): {e}")
-            if attempt < max_retries - 1:
-                time.sleep(15)
-            else:
+            print(f"Błąd Gemini API (próba {attempt + 1}/{max_retries}): {e}")
+            time.sleep(10)
+            if attempt == max_retries - 1:
                 raise e
-    
+
     b_ticks = chr(96) + chr(96) + chr(96) 
     raw_text = response.text if response else ""
     raw_text = raw_text.replace(b_ticks + "html", "").replace(b_ticks, "").strip()
     
-    meta_desc = f"Aktualne informacje i szczegóły wydarzenia: {keyword}."
-    image_prompt = f"editorial news photo about {keyword}"
+    meta_desc = f"Najnowsze informacje na temat: {topic}."
+    image_prompt = f"editorial news photo about {topic}"
     article_html = raw_text
     
     try:
         if "---META_DESCRIPTION---" in raw_text and "---ARTICLE---" in raw_text:
             parts = raw_text.split("---ARTICLE---")
             article_html = parts[1].strip()
-            
             header_parts = parts[0].split("---IMAGE_PROMPT---")
             meta_desc = header_parts[0].replace("---META_DESCRIPTION---", "").strip()
             if len(header_parts) > 1:
@@ -233,69 +199,37 @@ def generate_article_seo(keyword, context_data=""):
         
     return article_html, meta_desc, image_prompt
 
-# --- MODUŁY GENEROWANIA I POBIERANIA GRAFIKI ---
+# --- POBIERANIE I GENEROWANIE GRAFIK ---
 
 def generate_ai_image(image_prompt, output_filename):
-    if not client:
-        return False
+    if not client: return False
     try:
-        print("Próba 1: Generowanie obrazu przez Google Imagen...")
+        print("Generowanie obrazu przez Google Imagen...")
         result = client.models.generate_images(
             model='imagen-3.0-generate-002',
             prompt=image_prompt,
             config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio="16:9",
-                output_mime_type="image/jpeg"
+                number_of_images=1, aspect_ratio="16:9", output_mime_type="image/jpeg"
             )
         )
         for generated_image in result.generated_images:
             img = Image.open(io.BytesIO(generated_image.image.image_bytes))
             img.thumbnail((600, 337))
-            img.save(output_filename, "JPEG", quality=60, optimize=True)
+            img.save(output_filename, "JPEG", quality=65, optimize=True)
             return True
     except Exception as e:
-        print(f"Google Imagen nie powiódł się: {e}")
-    return False
-
-def download_pexels_image(keyword, output_filename):
-    if not PEXELS_API_KEY:
-        return False
-    try:
-        print("Próba 2: Pobieranie zdjęcia z Pexels...")
-        search_query = " ".join(slugify(keyword).split("-")[:2])
-        encoded_query = urllib.parse.quote(search_query)
-        url = f"https://api.pexels.com/v1/search?query={encoded_query}&per_page=1&orientation=landscape"
-        
-        req = urllib.request.Request(url, headers={'Authorization': PEXELS_API_KEY})
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode('utf-8'))
-            if data.get('photos') and len(data['photos']) > 0:
-                image_url = data['photos'][0]['src']['large']
-                img_req = urllib.request.Request(image_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(img_req, timeout=10) as img_res:
-                    img = Image.open(io.BytesIO(img_res.read()))
-                    if img.mode != 'RGB':
-                        img = img.convert('RGB')
-                    img.thumbnail((600, 337))
-                    img.save(output_filename, "JPEG", quality=70, optimize=True)
-                    return True
-    except Exception as e:
-        print(f"Pexels nie powiódł się: {e}")
+        print(f"Imagen nie powiódł się: {e}")
     return False
 
 def download_pollinations_image(image_prompt, output_filename):
     try:
-        print("Próba 3: Generowanie darmowej grafiki AI (Pollinations)...")
-        clean_prompt = urllib.parse.quote(image_prompt[:100])
+        print("Pobieranie grafiki z Pollinations AI...")
+        clean_prompt = urllib.parse.quote(image_prompt[:120])
         url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=600&height=337&nologo=true"
-        
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=15) as response:
-            img_bytes = response.read()
-            img = Image.open(io.BytesIO(img_bytes))
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
+            img = Image.open(io.BytesIO(response.read()))
+            if img.mode != 'RGB': img = img.convert('RGB')
             img.save(output_filename, "JPEG", quality=70, optimize=True)
             return True
     except Exception as e:
@@ -304,34 +238,25 @@ def download_pollinations_image(image_prompt, output_filename):
 
 def download_fallback_picsum(output_filename):
     try:
-        print("Próba 4 (Ostateczna): Pobieranie gwarantowanego zdjęcia z Picsum Photos...")
+        print("Pobieranie zdjęcia zapasowego z Picsum...")
         url = "https://picsum.photos/600/337"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=10) as response:
-            img_bytes = response.read()
-            img = Image.open(io.BytesIO(img_bytes))
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
+            img = Image.open(io.BytesIO(response.read()))
+            if img.mode != 'RGB': img = img.convert('RGB')
             img.save(output_filename, "JPEG", quality=70, optimize=True)
             return True
     except Exception as e:
-        print(f"Błąd krytyczny pobierania Picsum: {e}")
+        print(f"Picsum nie powiódł się: {e}")
     return False
 
 def process_and_save_image(keyword, image_prompt, image_filename):
-    """Próbuje po kolei wszystkich źródeł, dopóki plik .jpg nie zapisze się fizycznie na dysku."""
     if generate_ai_image(image_prompt, image_filename):
         return "Grafika wygenerowana przez Google AI."
-    
-    if download_pexels_image(keyword, image_filename):
-        return "Zdjęcie ilustracyjne z serwisu Pexels."
-        
     if download_pollinations_image(image_prompt, image_filename):
-        return "Grafika wygenerowana przez sztuczną inteligencję (AI)."
-        
+        return "Grafika wygenerowana przez AI."
     if download_fallback_picsum(image_filename):
         return "Zdjęcie ilustracyjne."
-        
     return ""
 
 def save_html_page(keyword, article_html, meta_desc, image_prompt):
@@ -342,8 +267,6 @@ def save_html_page(keyword, article_html, meta_desc, image_prompt):
     image_filename = f"{slug}.jpg"
     
     page_url = f"{BASE_URL}/{filename}"
-    
-    # Pobieranie zdjęcia - plik image_filename ZAWSZE zostanie utworzony na dysku
     image_caption = process_and_save_image(keyword, image_prompt, image_filename)
     image_url = f"{BASE_URL}/{image_filename}"
 
@@ -357,9 +280,7 @@ def save_html_page(keyword, article_html, meta_desc, image_prompt):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{page_title} - Co w Sieci</title>
     <meta name="description" content="{meta_desc}">
-    <meta name="keywords" content="{keyword}, informacje, newsy, co w sieci, wiadomosci">
     <link rel="canonical" href="{page_url}">
-    
     <meta property="og:type" content="article">
     <meta property="og:url" content="{page_url}">
     <meta property="og:title" content="{page_title}">
@@ -375,25 +296,21 @@ def save_html_page(keyword, article_html, meta_desc, image_prompt):
       "datePublished": "{iso_date}",
       "dateModified": "{iso_date}",
       "description": "{meta_desc}",
-      "mainEntityOfPage": {{
-        "@type": "WebPage",
-        "@id": "{page_url}"
-      }}
+      "mainEntityOfPage": {{ "@type": "WebPage", "@id": "{page_url}" }}
     }}
     </script>
 
     <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #222; }}
         header {{ border-bottom: 2px solid #0066cc; padding-bottom: 10px; margin-bottom: 20px; }}
         header a {{ text-decoration: none; color: #0066cc; font-weight: bold; font-size: 1.6rem; }}
-        h1 {{ color: #111; margin-top: 15px; line-height: 1.3; }}
-        h2 {{ color: #0066cc; margin-top: 25px; }}
-        .meta {{ color: #666; font-size: 0.9rem; margin-bottom: 15px; }}
+        h1 {{ color: #111; margin-top: 15px; line-height: 1.3; font-size: 1.8rem; }}
+        h2 {{ color: #0066cc; margin-top: 25px; font-size: 1.3rem; }}
+        .meta {{ color: #666; font-size: 0.85rem; margin-bottom: 15px; }}
         .featured-image-container {{ margin-bottom: 20px; }}
-        .featured-image {{ width: 100%; max-height: 450px; object-fit: cover; border-radius: 8px; display: block; }}
-        .image-caption {{ font-size: 0.8rem; color: #777; margin-top: 5px; text-align: right; font-style: italic; }}
+        .featured-image {{ width: 100%; max-height: 400px; object-fit: cover; border-radius: 8px; display: block; }}
+        .image-caption {{ font-size: 0.75rem; color: #777; margin-top: 5px; text-align: right; font-style: italic; }}
         footer {{ margin-top: 40px; border-top: 1px solid #ddd; padding-top: 15px; font-size: 0.85rem; color: #777; text-align: center; }}
-        .ai-notice {{ font-style: italic; color: #888; margin-top: 5px; }}
     </style>
 </head>
 <body>
@@ -406,7 +323,6 @@ def save_html_page(keyword, article_html, meta_desc, image_prompt):
     <main>{article_html}</main>
     <footer>
         <div>&copy; {datetime.datetime.now().year} Co w Sieci</div>
-        <div class="ai-notice">Ten artykuł został automatycznie wygenerowany.</div>
     </footer>
 </body>
 </html>"""
@@ -431,20 +347,17 @@ def update_index(page_title, filename, date_str, meta_desc):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Co w Sieci - Najnowsze Informacje i Wiadomości</title>
-    <meta name="description" content="Serwis informacyjny prezentujący najnowsze tematy i wydarzenia.">
+    <title>Co w Sieci - Najważniejsze Wiadomości</title>
     <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #333; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #222; }}
         h1 {{ border-bottom: 2px solid #0066cc; padding-bottom: 10px; color: #0066cc; }}
         ul {{ list-style-type: none; padding: 0; }}
         .article-item {{ padding: 15px 0; border-bottom: 1px solid #eee; }}
-        .article-item h2 {{ margin: 5px 0; font-size: 1.3rem; }}
+        .article-item h2 {{ margin: 5px 0; font-size: 1.2rem; }}
         .article-item a {{ text-decoration: none; color: #111; }}
         .article-item a:hover {{ color: #0066cc; }}
-        .date {{ color: #888; font-size: 0.85rem; }}
-        .summary {{ color: #555; font-size: 0.95rem; margin-top: 5px; }}
-        footer {{ margin-top: 40px; border-top: 1px solid #ddd; padding-top: 15px; font-size: 0.85rem; color: #777; text-align: center; }}
-        .ai-notice {{ font-style: italic; color: #888; margin-top: 5px; }}
+        .date {{ color: #888; font-size: 0.8rem; }}
+        .summary {{ color: #555; font-size: 0.9rem; margin-top: 5px; }}
     </style>
 </head>
 <body>
@@ -452,22 +365,14 @@ def update_index(page_title, filename, date_str, meta_desc):
     <ul id="trends-list">
     {entry}
     </ul>
-    <footer>
-        <div>&copy; {datetime.datetime.now().year} Co w Sieci</div>
-        <div class="ai-notice">Treści na stronie są generowane automatycznie.</div>
-    </footer>
 </body>
 </html>"""
-        with open(index_file, "w", encoding="utf-8") as f:
-            f.write(base_index)
+        with open(index_file, "w", encoding="utf-8") as f: f.write(base_index)
     else:
-        with open(index_file, "r", encoding="utf-8") as f:
-            content = f.read()
-        
+        with open(index_file, "r", encoding="utf-8") as f: content = f.read()
         if f'href="{filename}"' not in content:
             updated_content = content.replace('<ul id="trends-list">', f'<ul id="trends-list">\n    {entry}')
-            with open(index_file, "w", encoding="utf-8") as f:
-                f.write(updated_content)
+            with open(index_file, "w", encoding="utf-8") as f: f.write(updated_content)
 
 def update_sitemap(filename, date_str):
     sitemap_file = "sitemap.xml"
@@ -489,41 +394,18 @@ def update_sitemap(filename, date_str):
   </url>
 {new_url_entry}
 </urlset>"""
-        with open(sitemap_file, "w", encoding="utf-8") as f:
-            f.write(sitemap_content)
+        with open(sitemap_file, "w", encoding="utf-8") as f: f.write(sitemap_content)
     else:
-        with open(sitemap_file, "r", encoding="utf-8") as f:
-            content = f.read()
-        
+        with open(sitemap_file, "r", encoding="utf-8") as f: content = f.read()
         if f"{BASE_URL}/{filename}" not in content:
             updated_content = content.replace('</urlset>', f'{new_url_entry}\n</urlset>')
-            with open(sitemap_file, "w", encoding="utf-8") as f:
-                f.write(updated_content)
+            with open(sitemap_file, "w", encoding="utf-8") as f: f.write(updated_content)
 
-def select_trend_keyword(trends):
-    if not client:
-        return trends[0]['keyword'] if trends else None
-
-    prompt_selection = "Oto lista dzisiejszych trendów z Google w Polsce:\n"
-    for i, t in enumerate(trends):
-        prompt_selection += f"{i+1}. Temat: {t['keyword']} | Opis: {t['description']} | Powiązane newsy: {', '.join(t['news'])}\n"
-    
-    prompt_selection += "\nWybierz z tej listy jeden, najbardziej konkretny i interesujący temat pod kątem artykułu informacyjnego (SEO). Zwróć WYŁĄCZNIE wybrane słowo kluczowe / tytuł tematu, bez żadnego dodatkowego tekstu."
-
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model='gemini-3.5-flash',
-                contents=prompt_selection
-            )
-            return response.text.strip().replace('"', '').replace("'", "")
-        except Exception as e:
-            print(f"Błąd Gemini podczas wyboru tematu z trendów (próba {attempt + 1}/{max_retries}): {e}")
-            if attempt < max_retries - 1:
-                time.sleep(15)
-
-    return trends[0]['keyword']
+def select_best_news(news_items):
+    """Szybko wybiera najbardziej konkretny news ze świeżej listy."""
+    if not news_items: return None
+    # Wybieramy pierwszy gorący news z Google News
+    return news_items[0]
 
 if __name__ == "__main__":
     cleanup_old_articles()
@@ -531,30 +413,22 @@ if __name__ == "__main__":
     manual_keywords = get_manual_keywords()
     
     if manual_keywords:
-        print(f"Znaleziono {len(manual_keywords)} ręcznie dodanych fraz w kolejce. Generowanie...")
+        print(f"Znaleziono {len(manual_keywords)} ręcznie dodanych tematów.")
         for kw in manual_keywords:
-            print(f"Generowanie artykułu i grafiki dla frazy: {kw}")
+            print(f"Generowanie artykułu: {kw}")
             article_html, meta_desc, image_prompt = generate_article_seo(kw)
             save_html_page(kw, article_html, meta_desc, image_prompt)
     else:
-        print("Kolejka ręczna jest pusta. Pobieranie listy trendów z Google Trends...")
-        trends = get_top_trends_list()
+        print("Pobieranie najświeższych newsów z Google News Polska...")
+        news_list = get_top_news_list()
         
-        if trends:
-            selected_keyword = select_trend_keyword(trends)
+        if news_list:
+            selected_news = select_best_news(news_list)
+            print(f"Wybrany aktualny news: {selected_news}")
             
-            context_data = ""
-            for t in trends:
-                if t['keyword'].lower() in selected_keyword.lower() or selected_keyword.lower() in t['keyword'].lower():
-                    context_data = f"Słowo kluczowe: {t['keyword']}\nOpis: {t['description']}\nNagłówki: {', '.join(t['news'])}"
-                    break
-            if not context_data:
-                context_data = f"Słowo kluczowe: {selected_keyword}"
-
-            print(f"Wybrany temat z Google: {selected_keyword}")
-            article_html, meta_desc, image_prompt = generate_article_seo(selected_keyword, context_data)
-            save_html_page(selected_keyword, article_html, meta_desc, image_prompt)
+            article_html, meta_desc, image_prompt = generate_article_seo(selected_news)
+            save_html_page(selected_news, article_html, meta_desc, image_prompt)
         else:
-            print("Nie udało się pobrać trendów z Google Trends.")
+            print("Nie udało się pobrać aktualności.")
             
-    print("Zakończono pracę bota.")
+    print("Praca bota zakończona.")
